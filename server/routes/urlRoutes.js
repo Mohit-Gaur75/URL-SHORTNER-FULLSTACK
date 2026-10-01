@@ -1,11 +1,8 @@
-const express = require("express");
-const router = express.Router();
-const {
-  shortenUrl,
-  redirectUrl,
-} = require("../controllers/urlControllers");
+const router = require("express").Router();
+const { createUrl } = require("../controllers/urlControllers");
+const validateUrl = require("../middleware/validateUrl");
+const { createLimiter } = require("../middleware/rateLimit");
 
-router.post("/api/shorten", shortenUrl);
-router.get("/:code", redirectUrl);
+router.post("/", createLimiter, validateUrl, createUrl);
 
 module.exports = router;

@@ -1,16 +1,20 @@
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
 const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
 
+app.set("trust proxy", 1); // on Render, so rate limiting sees the real client IP
+app.use(helmet());
 app.use(cors({ origin: process.env.CLIENT_URL || "*" }));
-app.use(express.json());
+app.use(express.json({ limit: "10kb" }));
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
+app.use("/api/auth", require("./routes/authRoutes"));
+app.use("/api/urls", require("./routes/urlRoutes"));
+app.use("/", require("./routes/redirectRoutes")); // still LAST
 
-app.use("/", require("./routes/urlRoutes")); 
-
-app.use(errorHandler); 
+app.use(errorHandler);
 
 module.exports = app;

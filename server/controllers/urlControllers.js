@@ -1,50 +1,49 @@
-const shortid = require("shortid");
 const Url = require("../models/url");
+const HttpError = require("../utils/HttpError");
+const { generate, isValidCode } = require("../utils/shortCode");
 
-exports.shortenUrl = async (req, res) => {
-  const { originalUrl } = req.body;
+const toResponse = (url) => ({
+  id: url._id,
+  originalUrl: url.originalUrl,
+  shortCode: url.shortCode,
+  shortUrl: `${process.env.BASE_URL}/${url.shortCode}`,
+  clicks: url.clicks,
+  createdAt: url.createdAt,
+});
 
-  if (!originalUrl) {
-    return res.status(400).json({ message: "URL is required" });
-  }
+exports.createUrl = async (req, res) => {
+  const { originalUrl, customCode } = req.body;
+  const isCustom = Boolean(customCode);
+  const attempts = isCustom ? 1 : 5;
 
-  try {
-    let url = await Url.findOne({ originalUrl });
-
-    if (url) {
-      return res.json(url);
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const url = await Url.create({
+        originalUrl,
+        shortCode: isCustom ? customCode : generate(),
+      });
+      return res.status(201).json(toResponse(url));
+    } catch (err) {
+      if (err.code !== 11000) throw err; // 11000 = duplicate key (unique index)
+      if (isCustom) throw new HttpError(409, "That short code is already taken");
+      // random code collided: loop and try a new one
     }
-
-    const shortCode = shortid.generate();
-    const shortUrl = `${process.env.BASE_URL}/${shortCode}`;
-
-    url = new Url({
-      originalUrl,
-      shortCode,
-      shortUrl,
-    });
-
-    await url.save();
-
-    res.status(201).json(url);
-  } catch (error) {
-    res.status(500).json({ message: "Server error" });
   }
+  throw new HttpError(500, "Could not generate a unique code, please retry");
 };
 
 exports.redirectUrl = async (req, res) => {
-  try {
-    const url = await Url.findOne({ shortCode: req.params.code });
+  const { code } = req.params;
 
-    if (!url) {
-      return res.status(404).json({ message: "URL not found" });
-    }
+  // Junk like "favicon.ico" never touches the database
+  if (!isValidCode(code)) throw new HttpError(404, "URL not found");
 
-    url.clicks++;
-    await url.save();
+  // Find and increment in ONE atomic operation
+  const url = await Url.findOneAndUpdate(
+    { shortCode: code },
+    { $inc: { clicks: 1 } }
+  );
 
-    res.redirect(url.originalUrl);
-  } catch (error) {
-    res.status(500).json({ message: "Server error" });
-  }
+  if (!url) throw new HttpError(404, "URL not found");
+  res.redirect(url.originalUrl);
 };
