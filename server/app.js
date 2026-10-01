@@ -7,7 +7,13 @@ const app = express();
 
 app.set("trust proxy", 1); // on Render, so rate limiting sees the real client IP
 app.use(helmet());
-app.use(cors({ origin: process.env.CLIENT_URL || "*" }));
+app.use(
+	cors({
+		origin: process.env.CLIENT_URL || "http://localhost:5173",
+		methods: ["GET", "POST", "OPTIONS"],
+		allowedHeaders: ["Content-Type", "Authorization"],
+	})
+);
 app.use(express.json({ limit: "10kb" }));
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
