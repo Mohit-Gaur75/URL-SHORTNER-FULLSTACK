@@ -1,13 +1,11 @@
 const mongoose = require("mongoose");
+const env = require("./env");
 
+// Throws on failure. Deciding what to do about it (exit, retry) is the
+// caller's job, and server.js is the one place that decides.
 const connectDB = async () => {
-  try {
-    await mongoose.connect(process.env.MONGO_URI);
-    console.log("✅ MongoDB connected");
-  } catch (error) {
-    console.error("❌ MongoDB connection failed", error);
-    process.exit(1);
-  }
+  await mongoose.connect(env.mongoUri);
+  console.log("✅ MongoDB connected");
 };
 
 module.exports = connectDB;

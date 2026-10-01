@@ -1,19 +1,17 @@
-const dotenv = require("dotenv");
-dotenv.config();
-
+const env = require("./config/env"); // validates environment first; exits if invalid
 const app = require("./app");
 const connectDB = require("./config/db");
-if (!process.env.JWT_SECRET) {
-  console.error("❌ JWT_SECRET is not set");
-  process.exit(1);
+
+async function start() {
+  // Connect BEFORE accepting traffic, so no request ever hits a dead database
+  await connectDB();
+
+  app.listen(env.port, () => {
+    console.log(`🚀 Server running on port ${env.port} (${env.nodeEnv})`);
+  });
 }
 
-connectDB();
-console.log("ENV MONGO_URI:", process.env.MONGO_URI ? "FOUND" : "NOT FOUND");
-
-
-const PORT = process.env.PORT || 5000;
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+start().catch((err) => {
+  console.error("❌ Failed to start server:", err.message);
+  process.exit(1);
 });
