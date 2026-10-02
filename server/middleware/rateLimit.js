@@ -1,4 +1,6 @@
 const rateLimit = require("express-rate-limit");
+const { RateLimitError } = require("../utils/errors");
+
 
 // NOTE: values are unchanged from the original project; Phase 10 redesigns them.
 exports.createLimiter = rateLimit({
@@ -6,7 +8,7 @@ exports.createLimiter = rateLimit({
   limit: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { message: "Too many links created, please try again later" },
+  message: new RateLimitError("Too many links created, please try again later"),
 });
 
 exports.authLimiter = rateLimit({
@@ -14,5 +16,5 @@ exports.authLimiter = rateLimit({
   limit: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { message: "Too many attempts, please try again later" },
+  message: new RateLimitError("Too many attempts, please try again later"),
 });

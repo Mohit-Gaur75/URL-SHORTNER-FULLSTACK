@@ -1,4 +1,4 @@
-const HttpError = require("../utils/HttpError");
+const { ValidationError } = require("../utils/errors");
 
 // validate({ body, params, query }) → middleware.
 //
@@ -32,9 +32,9 @@ module.exports = (schemas) => (req, res, next) => {
   }
 
   if (details.length > 0) {
-    // `message` stays a single readable string (the React client shows it);
-    // `details` lists every problem for clients that want field-level errors.
-    throw new HttpError(400, details[0].message, details);
+    // The error handler turns this into the standard error envelope:
+    // code VALIDATION_ERROR, with one entry in `details` per problem.
+    throw new ValidationError(details);
   }
 
   req.validated = validated;
