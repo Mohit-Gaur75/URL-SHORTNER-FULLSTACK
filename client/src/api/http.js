@@ -13,15 +13,26 @@ http.interceptors.request.use((config) => {
   return config;
 });
 
-// Runs after every response: normalize errors
+// Runs after every response: turn the server's error format into a plain Error.
+//
+// The server answers every failure with:
+//   { success: false, error: { code, message, details: [...] }, requestId }
+// For validation failures `message` is a generic "Invalid request", and the
+// useful sentence is in details[0].message, so we prefer that when it exists.
 http.interceptors.response.use(
   (res) => res,
   (err) => {
+    const apiError = err.response?.data?.error;
     const message =
-      err.response?.data?.message ||
+      apiError?.details?.[0]?.message ||
+      apiError?.message ||
       (err.request ? "Cannot reach the server" : "Something went wrong");
+
     const error = new Error(message);
     error.status = err.response?.status;
+    error.code = apiError?.code; //            e.g. "EMAIL_TAKEN", "TOKEN_EXPIRED"
+    error.details = apiError?.details ?? [];
+    error.requestId = err.response?.data?.requestId; // quote this in bug reports
     return Promise.reject(error);
   }
 );
