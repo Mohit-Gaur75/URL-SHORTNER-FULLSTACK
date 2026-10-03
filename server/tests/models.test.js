@@ -129,7 +129,12 @@ test("a click updates clicks + lastClickedAt but must NOT touch updatedAt", asyn
   assert.equal(destination, "https://example.com");
 
   const [filter, update, options] = mock.mock.calls[0].arguments;
-  assert.deepEqual(filter, { shortCode: "abc1234" });
+  assert.equal(filter.shortCode, "abc1234");
+  // expired links are excluded by the same atomic operation: expiresAt is
+  // either unset (null / missing) or still in the future
+  assert.equal(filter.$or.length, 2);
+  assert.deepEqual(filter.$or[0], { expiresAt: null });
+  assert.ok(filter.$or[1].expiresAt.$gt instanceof Date);
   assert.deepEqual(update.$inc, { clicks: 1 });
   assert.ok(update.$set.lastClickedAt instanceof Date);
   assert.equal(options.timestamps, false); // without this, every click would bump updatedAt

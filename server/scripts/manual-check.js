@@ -1,70 +1,91 @@
 // Fires a set of valid and invalid requests at a RUNNING server and checks the
-// status codes. Usage (server must be running, MongoDB connected):
+// status code AND the machine-readable error code of each answer.
 //
 //   npm run check:api
 //   API_URL=http://localhost:5000 node scripts/manual-check.js
 //
-// It makes 8 auth requests and 9 URL-creation requests, which stays inside the
+// It makes 8 auth requests and 10 URL-creation requests, which stays inside the
 // current rate limits (10 per 15 minutes each). Re-running it immediately will
 // hit those limits (429); restart the server (type `rs` in nodemon) to reset.
 
 const API = (process.env.API_URL || "http://localhost:5000").replace(/\/+$/, "");
 const stamp = Date.now();
+const EXPIRES = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+const ctx = { token: null }; // filled in by the login check, used by the owned-link checks
+const AUTH = () => ({ Authorization: `Bearer ${ctx.token}` });
 
+// [method, path, body, expected status, expected error code (or null), label, extra headers]
 const cases = [
-  ["GET", "/api/health", null, 200, "health check"],
+  ["GET", "/api/health", null, 200, null, "health check"],
+  ["GET", "/api/does-not-exist", null, 404, "ROUTE_NOT_FOUND", "unknown route (used to be an HTML page)"],
+  ["POST", "/api/auth/register", "{bad json", 400, "INVALID_JSON", "malformed JSON body"],
+  ["GET", "/api/auth/me", null, 401, "UNAUTHENTICATED", "me: no token"],
+  ["GET", "/api/auth/me", null, 401, "INVALID_TOKEN", "me: garbage token", { Authorization: "Bearer garbage" }],
 
   // ---- auth (8 requests) ----
-  ["POST", "/api/auth/register", {}, 400, "register: all fields missing"],
-  ["POST", "/api/auth/register", { name: "T", email: "not-an-email", password: "password123" }, 400, "register: invalid email"],
-  ["POST", "/api/auth/register", { name: "T", email: "t@example.com", password: "short" }, 400, "register: password too short"],
-  ["POST", "/api/auth/register", { name: "T", email: "t@example.com", password: "password123", role: "ADMIN" }, 400, "register: unknown field 'role' rejected"],
-  ["POST", "/api/auth/register", { name: "  Test User ", email: `Test.${stamp}@Example.com`, password: "password123" }, 201, "register: valid (messy name/email get cleaned)"],
-  ["POST", "/api/auth/login", { email: { $gt: "" }, password: { $gt: "" } }, 400, "login: NoSQL operator payload rejected"],
-  ["POST", "/api/auth/login", { email: `test.${stamp}@example.com`, password: "wrong-password" }, 401, "login: wrong password"],
-  ["POST", "/api/auth/login", { email: `TEST.${stamp}@example.com`, password: "password123" }, 200, "login: correct (email is case-insensitive)"],
+  ["POST", "/api/auth/register", {}, 400, "VALIDATION_ERROR", "register: all fields missing"],
+  ["POST", "/api/auth/register", { name: "T", email: "not-an-email", password: "password123" }, 400, "VALIDATION_ERROR", "register: invalid email"],
+  ["POST", "/api/auth/register", { name: "T", email: "t@example.com", password: "short" }, 400, "VALIDATION_ERROR", "register: password too short"],
+  ["POST", "/api/auth/register", { name: "T", email: "t@example.com", password: "password123", role: "ADMIN" }, 400, "VALIDATION_ERROR", "register: unknown field 'role' rejected"],
+  ["POST", "/api/auth/register", { name: "  Test User ", email: `Test.${stamp}@Example.com`, password: "password123" }, 201, null, "register: valid"],
+  ["POST", "/api/auth/login", { email: { $gt: "" }, password: { $gt: "" } }, 400, "VALIDATION_ERROR", "login: NoSQL operator payload rejected"],
+  ["POST", "/api/auth/login", { email: `test.${stamp}@example.com`, password: "wrong-password" }, 401, "INVALID_CREDENTIALS", "login: wrong password"],
+  ["POST", "/api/auth/login", { email: `TEST.${stamp}@example.com`, password: "password123" }, 200, null, "login: correct (email is case-insensitive)"],
 
-  // ---- urls (9 requests) ----
-  ["POST", "/api/urls", {}, 400, "url: empty body"],
-  ["POST", "/api/urls", { originalUrl: "javascript:alert(1)" }, 400, "url: javascript: scheme"],
-  ["POST", "/api/urls", { originalUrl: "ftp://example.com/file" }, 400, "url: ftp scheme"],
-  ["POST", "/api/urls", { originalUrl: `${API}/abc` }, 400, "url: points at this service"],
-  ["POST", "/api/urls", { originalUrl: "https://example.com", customCode: "admin" }, 400, "url: reserved custom code"],
-  ["POST", "/api/urls", { originalUrl: "https://example.com", customCode: "has space" }, 400, "url: custom code with a space"],
-  ["POST", "/api/urls", { originalUrl: " https://example.com/valid ", customCode: "" }, 201, "url: valid, random code (empty customCode = none)"],
-  ["POST", "/api/urls", { originalUrl: "https://example.com/custom", customCode: `t${stamp}` }, 201, "url: valid with custom code"],
-  ["POST", "/api/urls", { originalUrl: "https://example.com/custom", customCode: `t${stamp}` }, 409, "url: same custom code again"],
+  // ---- urls (10 requests) ----
+  ["POST", "/api/urls", {}, 400, "VALIDATION_ERROR", "url: empty body"],
+  ["POST", "/api/urls", { originalUrl: "javascript:alert(1)" }, 400, "VALIDATION_ERROR", "url: javascript: scheme"],
+  ["POST", "/api/urls", { originalUrl: `${API}/abc` }, 400, "VALIDATION_ERROR", "url: points at this service"],
+  ["POST", "/api/urls", { originalUrl: "https://paypal.com@evil.example/login" }, 400, "VALIDATION_ERROR", "url: credentials hidden in the URL"],
+  ["POST", "/api/urls", { originalUrl: "https://example.com", customCode: "Support" }, 400, "VALIDATION_ERROR", "url: reserved word (any letter case)"],
+  ["POST", "/api/urls", { originalUrl: "https://example.com", expiresAt: "2020-01-01" }, 400, "VALIDATION_ERROR", "url: expiry in the past"],
+  ["POST", "/api/urls", { originalUrl: " https://example.com/valid ", customCode: "" }, 201, null, "url: valid, random code"],
+  ["POST", "/api/urls", { originalUrl: "https://example.com/custom", customCode: `t${stamp}`, expiresAt: EXPIRES }, 201, null, "url: owned custom alias with an expiry", AUTH],
+  ["POST", "/api/urls", { originalUrl: "https://example.com/custom", customCode: `t${stamp}`, expiresAt: EXPIRES }, 200, null, "url: SAME request again → 200, the same link (safe retry)", AUTH],
+  ["POST", "/api/urls", { originalUrl: "https://example.com/DIFFERENT", customCode: `t${stamp}`, expiresAt: EXPIRES }, 409, "SHORT_CODE_TAKEN", "url: same alias, different destination", AUTH],
 
   // ---- redirect (not rate limited) ----
-  ["GET", `/t${stamp}`, null, 302, "redirect: the custom code created above"],
-  ["GET", "/definitely-not-a-code", null, 404, "redirect: unknown code"],
+  ["GET", `/t${stamp}`, null, 302, null, "redirect: the custom code created above"],
+  ["GET", "/definitely-not-a-code", null, 404, "URL_NOT_FOUND", "redirect: unknown code"],
 ];
 
 (async () => {
   let failed = 0;
-  for (const [method, path, body, expected, label] of cases) {
-    let status, text;
+  for (const [method, path, body, wantStatus, wantCode, label, extraHeaders] of cases) {
+    let res, text;
     try {
-      const res = await fetch(API + path, {
+      const raw = typeof body === "string";
+      res = await fetch(API + path, {
         method,
         redirect: "manual",
-        headers: body ? { "Content-Type": "application/json" } : {},
-        body: body ? JSON.stringify(body) : undefined,
+        headers: {
+          ...(body ? { "Content-Type": "application/json" } : {}),
+          ...(typeof extraHeaders === "function" ? extraHeaders() : extraHeaders),
+        },
+        body: body ? (raw ? body : JSON.stringify(body)) : undefined,
       });
-      status = res.status;
       text = res.status === 302 ? `→ ${res.headers.get("location")}` : await res.text();
     } catch (err) {
       console.error(`Cannot reach ${API}: ${err.message}. Is the server running?`);
       process.exit(1);
     }
-    const pass = status === expected;
-    if (!pass) failed++;
-    let shown = text;
-    try {
-      const j = JSON.parse(text);
-      shown = j.message || (j.user ? "ok" : j.shortUrl) || text;
-    } catch {}
-    console.log(`${pass ? "PASS" : "FAIL"}  ${String(status).padEnd(3)} (want ${expected})  ${label}\n          ${String(shown).slice(0, 110)}`);
+
+    let json = null;
+    try { json = JSON.parse(text); } catch {}
+    if (json?.token) ctx.token = json.token;
+
+    let problem = "";
+    if (res.status !== wantStatus) problem = `status ${res.status}, wanted ${wantStatus}`;
+    else if (wantCode && json?.error?.code !== wantCode) problem = `error code ${json?.error?.code}, wanted ${wantCode}`;
+    else if (wantCode && (json.success !== false || !json.requestId)) problem = "error body is missing success:false or requestId";
+
+    if (problem) failed++;
+    const shown = json?.error
+      ? `${json.error.code}: ${json.error.details?.[0]?.message || json.error.message}`
+      : json?.shortUrl || (json?.user ? "ok" : text);
+    console.log(
+      `${problem ? "FAIL" : "PASS"}  ${String(res.status).padEnd(3)}  ${label}\n          ${String(shown).slice(0, 100)}${problem ? `\n          >> ${problem}` : ""}`
+    );
   }
   console.log(failed ? `\n${failed} check(s) FAILED` : "\nAll checks passed");
   process.exit(failed ? 1 : 0);

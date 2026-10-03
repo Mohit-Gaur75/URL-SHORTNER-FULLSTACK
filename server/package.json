@@ -11,7 +11,8 @@
   "migrate:phase4": "node scripts/migrate-phase4.js",
   "db:tour": "node scripts/db-tour.js",
   "db:indexes": "node scripts/ensure-indexes.js",
-  "db:index-lab": "node scripts/index-lab.js"
+  "db:index-lab": "node scripts/index-lab.js",
+  "db:race-demo": "node scripts/race-demo.js"
   },
   "keywords": [],
   "author": "",

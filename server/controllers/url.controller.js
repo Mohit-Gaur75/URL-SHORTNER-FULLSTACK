@@ -16,13 +16,15 @@ const toUrlResponse = (url) => ({
 });
 
 exports.createUrl = async (req, res) => {
-  const { originalUrl, customCode } = req.validated.body;
-  const url = await urlService.createShortUrl({
+  const { originalUrl, customCode, expiresAt } = req.validated.body;
+  const { url, created } = await urlService.createShortUrl({
     originalUrl,
     customCode,
+    expiresAt,
     userId: req.user?._id ?? null,
   });
-  res.status(201).json(toUrlResponse(url));
+  
+  res.status(created ? 201 : 200).json(toUrlResponse(url));
 };
 
 exports.redirectUrl = async (req, res) => {

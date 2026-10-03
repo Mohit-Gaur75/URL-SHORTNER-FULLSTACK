@@ -129,3 +129,34 @@ test("analytics filters", () => {
   bad(analyticsQuery, { from: "yesterday" }, "ISO date");
   bad(analyticsQuery, { interval: "year" }, "interval must be one of");
 });
+
+test("create url: rejects credentials embedded in the URL", () => {
+  bad(createUrlBody, { originalUrl: "https://paypal.com@evil.example/login" }, "username or password");
+  bad(createUrlBody, { originalUrl: "https://user:secret@example.com/" }, "username or password");
+  ok(createUrlBody, { originalUrl: "https://example.com/path@with-at-sign" }); // an @ in the path is fine
+});
+
+test("create url: expiresAt must be a future date within 5 years, or null", () => {
+  const inDays = (n) => new Date(Date.now() + n * 86400000).toISOString();
+  const base = { originalUrl: "https://example.com" };
+
+  assert.ok(ok(createUrlBody, { ...base, expiresAt: inDays(30) }).expiresAt instanceof Date);
+  assert.equal(ok(createUrlBody, { ...base, expiresAt: null }).expiresAt, null);
+  assert.equal(ok(createUrlBody, base).expiresAt, undefined); // left out = never
+  bad(createUrlBody, { ...base, expiresAt: "2020-01-01" }, "future");
+  bad(createUrlBody, { ...base, expiresAt: inDays(6 * 365) }, "at most 5 years");
+  bad(createUrlBody, { ...base, expiresAt: "next week" }, "ISO date");
+  bad(createUrlBody, { ...base, expiresAt: 1893456000000 }, "ISO date"); // a raw timestamp number is not accepted
+});
+
+test("update url: shares the same expiry limits", () => {
+  const farFuture = new Date(Date.now() + 6 * 365 * 86400000).toISOString();
+  bad(updateUrlBody, { expiresAt: farFuture }, "at most 5 years");
+});
+
+test("reserved words are blocked in any letter case, including app routes", () => {
+  for (const code of ["login", "Dashboard", "API", "SUPPORT", "www", "Privacy"]) {
+    bad(createUrlBody, { originalUrl: "https://a.com", customCode: code }, "reserved");
+  }
+  ok(createUrlBody, { originalUrl: "https://a.com", customCode: "support-us" }); // only exact words are reserved
+});

@@ -20,13 +20,16 @@ const originalUrl = z
       return z.NEVER;
     }
 
-    // Only http/https, so `javascript:` or `file:` links can never be stored
     if (!["http:", "https:"].includes(parsed.protocol)) {
       ctx.addIssue({ code: "custom", message: "Only http and https URLs are allowed" });
       return z.NEVER;
     }
 
-    // Prevent redirect loops: shortening a link that points at ourselves
+    if (parsed.username || parsed.password) {
+      ctx.addIssue({ code: "custom", message: "URLs containing a username or password are not allowed" });
+      return z.NEVER;
+    }
+
     if (parsed.host === OWN_HOST) {
       ctx.addIssue({ code: "custom", message: "You can't shorten a link to this service" });
       return z.NEVER;
@@ -35,7 +38,6 @@ const originalUrl = z
     return parsed.href; // normalized form
   });
 
-// The form sends "" when the field is left empty, which means "no custom code".
 const customCode = z.preprocess(
   (value) => (value === "" ? undefined : value),
   z
@@ -45,14 +47,17 @@ const customCode = z.preprocess(
     .optional()
 );
 
+const MAX_EXPIRY_MS = 5 * 365 * 24 * 60 * 60 * 1000;
+const expiresAt = isoDate
+  .refine((date) => date > new Date(), "Expiry must be in the future")
+  .refine((date) => date.getTime() - Date.now() <= MAX_EXPIRY_MS, "Expiry can be at most 5 years from now")
+  .nullable();
+
 const createUrlBody = z.strictObject(
-  { originalUrl, customCode },
+  { originalUrl, customCode, expiresAt: expiresAt.optional() },
   { error: bodyTypeError }
 );
 
-// Used by PATCH /api/urls/:id in Phase 11.
-// The short code itself is deliberately NOT editable: links already shared
-// in the wild must keep working. `strictObject` rejects it if someone tries.
 const updateUrlBody = z
   .strictObject(
     {
@@ -60,11 +65,8 @@ const updateUrlBody = z
       status: z
         .enum(["active", "disabled"], { error: "Status must be 'active' or 'disabled'" })
         .optional(),
-      // null removes the expiry; a date sets one
-      expiresAt: isoDate
-        .refine((d) => d > new Date(), "Expiry must be in the future")
-        .nullable()
-        .optional(),
+
+        expiresAt: expiresAt.optional(),
     },
     { error: bodyTypeError }
   )
