@@ -105,7 +105,12 @@ const header = (text) => console.log(`\n${"=".repeat(78)}\n${text}\n${"=".repeat
     );
     const exact = (await links.findOne({ shortCode: "popular" })).clicks;
     console.log("\nB) $inc: the database adds 1 itself, as one atomic step  <- what the redirect does");
-    console.log(`   expected ${CLICKS}, got ${exact}  ->  ${exact === CLICKS ? "nothing lost" : "UNEXPECTED: investigate"}`);
+    console.log(`   expected ${CLICKS}, got ${exact}  ->  ${exact === CLICKS ? "nothing lost" : "CLICKS LOST"}`);
+    if (exact !== CLICKS) {
+      console.log("   MongoDB guarantees that a single-document update like $inc is atomic, so this");
+      console.log("   result is NOT expected from a real MongoDB server. Some MongoDB-compatible");
+      console.log("   servers do not provide that guarantee. Check what you are connected to.");
+    }
   } finally {
     await lab.dropDatabase();
     console.log(`\nLab database "${labName}" deleted. Your real data was not touched.`);

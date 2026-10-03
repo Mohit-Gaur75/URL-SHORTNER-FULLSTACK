@@ -11,8 +11,8 @@ const assert = require("node:assert/strict");
 
 const Url = require("../models/url.model");
 const codes = require("../utils/shortCode");
-const { createShortUrl, resolveShortCode } = require("../services/url.service");
-const { AppError, ConflictError, NotFoundError } = require("../utils/errors");
+const { createShortUrl } = require("../services/url.service");
+const { AppError, ConflictError } = require("../utils/errors");
 
 const duplicateKey = (field = "shortCode") =>
   Object.assign(new Error(`E11000 duplicate key { ${field}: ... }`), {
@@ -126,12 +126,3 @@ for (const [label, existing, request] of [
     await assert.rejects(claimAlias(t, existing, request), (err) => err.code === "SHORT_CODE_TAKEN");
   });
 }
-
-// ---------------------------------------------------------------- redirect + expiry
-
-test("redirect: an expired or unknown link is 'not found' and counts no click", async (t) => {
-  // The database applies the expiry filter inside the atomic update; when
-  // nothing matches it returns null.
-  t.mock.method(Url, "findOneAndUpdate", async () => null);
-  await assert.rejects(resolveShortCode("abc1234"), (err) => err instanceof NotFoundError && err.code === "URL_NOT_FOUND");
-});

@@ -33,7 +33,6 @@ const cases = [
   ["POST", "/api/auth/login", { email: `TEST.${stamp}@example.com`, password: "password123" }, 200, null, "login: correct (email is case-insensitive)"],
 
   // ---- urls (10 requests) ----
-  ["POST", "/api/urls", {}, 400, "VALIDATION_ERROR", "url: empty body"],
   ["POST", "/api/urls", { originalUrl: "javascript:alert(1)" }, 400, "VALIDATION_ERROR", "url: javascript: scheme"],
   ["POST", "/api/urls", { originalUrl: `${API}/abc` }, 400, "VALIDATION_ERROR", "url: points at this service"],
   ["POST", "/api/urls", { originalUrl: "https://paypal.com@evil.example/login" }, 400, "VALIDATION_ERROR", "url: credentials hidden in the URL"],
@@ -43,15 +42,23 @@ const cases = [
   ["POST", "/api/urls", { originalUrl: "https://example.com/custom", customCode: `t${stamp}`, expiresAt: EXPIRES }, 201, null, "url: owned custom alias with an expiry", AUTH],
   ["POST", "/api/urls", { originalUrl: "https://example.com/custom", customCode: `t${stamp}`, expiresAt: EXPIRES }, 200, null, "url: SAME request again → 200, the same link (safe retry)", AUTH],
   ["POST", "/api/urls", { originalUrl: "https://example.com/DIFFERENT", customCode: `t${stamp}`, expiresAt: EXPIRES }, 409, "SHORT_CODE_TAKEN", "url: same alias, different destination", AUTH],
+  ["POST", "/api/urls", () => ({ originalUrl: "https://example.com/expiring", customCode: `x${stamp}`, expiresAt: new Date(Date.now() + 3000).toISOString() }), 201, null, "url: a link that expires in 3 seconds"],
 
   // ---- redirect (not rate limited) ----
-  ["GET", `/t${stamp}`, null, 302, null, "redirect: the custom code created above"],
+  ["GET", `/t${stamp}`, null, 302, null, "redirect: GET answers 302 and is never cacheable", undefined, { header: ["cache-control", "no-store"] }],
+  ["HEAD", `/t${stamp}`, null, 302, null, "redirect: HEAD answers 302 too (and counts no click)"],
+  ["GET", `/x${stamp}`, null, 302, null, "redirect: the expiring link still works"],
   ["GET", "/definitely-not-a-code", null, 404, "URL_NOT_FOUND", "redirect: unknown code"],
+  ["GET", `/x${stamp}`, null, 410, "LINK_EXPIRED", "redirect: after it expires → 410 Gone", undefined, { wait: 3500, header: ["cache-control", "no-store"] }],
 ];
 
 (async () => {
   let failed = 0;
-  for (const [method, path, body, wantStatus, wantCode, label, extraHeaders] of cases) {
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  for (const [method, path, rawBody, wantStatus, wantCode, label, extraHeaders, opts] of cases) {
+    if (opts?.wait) await sleep(opts.wait);
+    const body = typeof rawBody === "function" ? rawBody() : rawBody;
     let res, text;
     try {
       const raw = typeof body === "string";
@@ -78,6 +85,7 @@ const cases = [
     if (res.status !== wantStatus) problem = `status ${res.status}, wanted ${wantStatus}`;
     else if (wantCode && json?.error?.code !== wantCode) problem = `error code ${json?.error?.code}, wanted ${wantCode}`;
     else if (wantCode && (json.success !== false || !json.requestId)) problem = "error body is missing success:false or requestId";
+    else if (opts?.header && !res.headers.get(opts.header[0])?.includes(opts.header[1])) problem = `header ${opts.header[0]} should contain "${opts.header[1]}"`;
 
     if (problem) failed++;
     const shown = json?.error

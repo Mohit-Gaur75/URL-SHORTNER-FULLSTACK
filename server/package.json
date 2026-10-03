@@ -12,7 +12,8 @@
   "db:tour": "node scripts/db-tour.js",
   "db:indexes": "node scripts/ensure-indexes.js",
   "db:index-lab": "node scripts/index-lab.js",
-  "db:race-demo": "node scripts/race-demo.js"
+  "db:race-demo": "node scripts/race-demo.js",
+  "bench:redirect": "node scripts/redirect-bench.js"
   },
   "keywords": [],
   "author": "",

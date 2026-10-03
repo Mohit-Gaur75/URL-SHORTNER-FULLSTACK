@@ -1,6 +1,4 @@
-// Operational errors: problems we EXPECT can happen while the app is running
-// correctly (bad input, wrong password, missing record, taken alias...).
-// Anything thrown that is NOT an AppError is treated as a bug.
+
 class AppError extends Error {
   constructor(statusCode, code, message, details = []) {
     super(message);
@@ -36,6 +34,15 @@ class NotFoundError extends AppError {
   }
 }
 
+// 410 = "this existed, and was deliberately taken away". Different from 404
+// ("nothing here, maybe never was"): it tells clients and search engines to
+// stop asking.
+class GoneError extends AppError {
+  constructor(message = "This resource is no longer available", code = "GONE") {
+    super(410, code, message);
+  }
+}
+
 class ConflictError extends AppError {
   constructor(message = "Conflict", code = "CONFLICT") {
     super(409, code, message);
@@ -54,6 +61,7 @@ module.exports = {
   AuthenticationError,
   AuthorizationError,
   NotFoundError,
+  GoneError,
   ConflictError,
   RateLimitError,
 };
