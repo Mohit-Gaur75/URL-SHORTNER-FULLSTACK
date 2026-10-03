@@ -9,7 +9,9 @@
     "test": "node --test",
   "check:api": "node scripts/manual-check-error.js",
   "migrate:phase4": "node scripts/migrate-phase4.js",
-  "db:tour": "node scripts/db-tour.js"
+  "db:tour": "node scripts/db-tour.js",
+  "db:indexes": "node scripts/ensure-indexes.js",
+  "db:index-lab": "node scripts/index-lab.js"
   },
   "keywords": [],
   "author": "",

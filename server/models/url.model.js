@@ -23,6 +23,7 @@ const urlSchema = new mongoose.Schema(
         timestamps: true,
   }
 );
+urlSchema.index({ user: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Url", urlSchema);
 module.exports.URL_STATUSES = URL_STATUSES;
