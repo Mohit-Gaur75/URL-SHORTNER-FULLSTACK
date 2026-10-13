@@ -1,4 +1,6 @@
-
+// Operational errors: problems we EXPECT can happen while the app is running
+// correctly (bad input, wrong password, missing record, taken alias...).
+// Anything thrown that is NOT an AppError is treated as a bug.
 class AppError extends Error {
   constructor(statusCode, code, message, details = []) {
     super(message);
@@ -23,8 +25,8 @@ class AuthenticationError extends AppError {
 }
 
 class AuthorizationError extends AppError {
-  constructor(message = "You don't have permission to do that") {
-    super(403, "FORBIDDEN", message);
+  constructor(message = "You don't have permission to do that", code = "FORBIDDEN") {
+    super(403, code, message);
   }
 }
 

@@ -11,7 +11,10 @@
 const API = (process.env.API_URL || "http://localhost:5000").replace(/\/+$/, "");
 const stamp = Date.now();
 const EXPIRES = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-const ctx = { token: null }; // filled in by the login check, used by the owned-link checks
+const ctx = { token: null, cookie: null, previousCookie: null }; // filled in as the checks run
+const CSRF = { "X-Requested-With": "XMLHttpRequest" };
+const WITH_COOKIE = () => ({ ...CSRF, Cookie: `refresh_token=${ctx.cookie}` });
+const WITH_PREVIOUS_COOKIE = () => ({ ...CSRF, Cookie: `refresh_token=${ctx.previousCookie}` });
 const AUTH = () => ({ Authorization: `Bearer ${ctx.token}` });
 
 // [method, path, body, expected status, expected error code (or null), label, extra headers]
@@ -49,6 +52,14 @@ const cases = [
   ["HEAD", `/t${stamp}`, null, 302, null, "redirect: HEAD answers 302 too (and counts no click)"],
   ["GET", `/x${stamp}`, null, 302, null, "redirect: the expiring link still works"],
   ["GET", "/definitely-not-a-code", null, 404, "URL_NOT_FOUND", "redirect: unknown code"],
+  // ---- sessions: refresh tokens live in a cookie (these use no login attempts) ----
+  ["POST", "/api/auth/refresh", null, 403, "CSRF_HEADER_REQUIRED", "refresh: refused without the X-Requested-With header", () => ({ Cookie: `refresh_token=${ctx.cookie}` })],
+  ["POST", "/api/auth/refresh", null, 401, "REFRESH_TOKEN_MISSING", "refresh: no cookie", CSRF],
+  ["POST", "/api/auth/refresh", null, 200, null, "refresh: cookie + header → new access token, rotated cookie", WITH_COOKIE, { cookieFlags: true }],
+  ["POST", "/api/auth/refresh", null, 401, "INVALID_REFRESH_TOKEN", "refresh: replaying the token just used (inside the 10 s grace window)", WITH_PREVIOUS_COOKIE],
+  ["POST", "/api/auth/logout", null, 204, null, "logout: ends the session and erases the cookie", WITH_COOKIE],
+  ["POST", "/api/auth/refresh", null, 401, "INVALID_REFRESH_TOKEN", "refresh after logout: the token is dead", () => ({ ...CSRF, Cookie: `refresh_token=${ctx.previousCookie}` })],
+
   ["GET", `/x${stamp}`, null, 410, "LINK_EXPIRED", "redirect: after it expires → 410 Gone", undefined, { wait: 3500, header: ["cache-control", "no-store"] }],
 ];
 
@@ -79,12 +90,21 @@ const cases = [
 
     let json = null;
     try { json = JSON.parse(text); } catch {}
-    if (json?.token) ctx.token = json.token;
+    if (json?.accessToken) ctx.token = json.accessToken;
+    // the refresh token travels in a cookie; remember it the way a browser would
+    const setCookie = res.headers.getSetCookie?.().find((c) => c.startsWith("refresh_token=")) ?? null;
+    if (setCookie) {
+      const value = setCookie.split(";")[0].slice("refresh_token=".length);
+      ctx.previousCookie = ctx.cookie;
+      ctx.cookie = value || null; // an empty value means "erase it"
+    }
 
     let problem = "";
     if (res.status !== wantStatus) problem = `status ${res.status}, wanted ${wantStatus}`;
     else if (wantCode && json?.error?.code !== wantCode) problem = `error code ${json?.error?.code}, wanted ${wantCode}`;
     else if (wantCode && (json.success !== false || !json.requestId)) problem = "error body is missing success:false or requestId";
+    else if (opts?.cookieFlags && !/HttpOnly/i.test(setCookie ?? "")) problem = "the refresh cookie must be HttpOnly";
+    else if (opts?.cookieFlags && !/SameSite=/i.test(setCookie ?? "")) problem = "the refresh cookie must have a SameSite attribute";
     else if (opts?.header && !res.headers.get(opts.header[0])?.includes(opts.header[1])) problem = `header ${opts.header[0]} should contain "${opts.header[1]}"`;
 
     if (problem) failed++;

@@ -15,7 +15,8 @@ app.use(
   cors({
     origin: env.clientUrl,
     methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true, 
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
     exposedHeaders: ["X-Request-Id"], // lets browser code read it
   })
 );
