@@ -1,27 +1,30 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { TOKEN_KEY } from "../api/http";
-import { fetchMe, loginUser, registerUser } from "../api/auth";
+import { setAccessToken, setSessionEndedHandler } from "../api/http";
+import { loginUser, logoutUser, registerUser, restoreSession } from "../api/auth";
 
 const AuthContext = createContext(null);
 
+// Earlier versions kept the login token under this key in localStorage.
+const LEGACY_TOKEN_KEY = "token";
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true); // true while we check a stored token
+  const [loading, setLoading] = useState(true); // true while we check for an existing session
 
-  // On first load: if a token exists, ask the server who it belongs to
   useEffect(() => {
-    if (!localStorage.getItem(TOKEN_KEY)) {
-      setLoading(false);
-      return;
-    }
-    fetchMe()
-      .then(setUser)
-      .catch(() => localStorage.removeItem(TOKEN_KEY)) // expired or invalid
+    localStorage.removeItem(LEGACY_TOKEN_KEY);
+
+    // If the API client discovers the session is over, show the logged-out UI.
+    setSessionEndedHandler(() => setUser(null));
+
+    restoreSession()
+      .then(({ user }) => setUser(user))
+      .catch(() => {}) // no cookie, or it expired: simply logged out
       .finally(() => setLoading(false));
   }, []);
 
-  const handleAuthSuccess = ({ token, user }) => {
-    localStorage.setItem(TOKEN_KEY, token);
+  const handleAuthSuccess = ({ accessToken, user }) => {
+    setAccessToken(accessToken);
     setUser(user);
   };
 
@@ -31,9 +34,15 @@ export function AuthProvider({ children }) {
   const register = async (details) =>
     handleAuthSuccess(await registerUser(details));
 
-  const logout = () => {
-    localStorage.removeItem(TOKEN_KEY);
+  const logout = async () => {
+    // Update the screen first, then tell the server.
+    setAccessToken(null);
     setUser(null);
+    try {
+      await logoutUser();
+    } catch {
+      // Even if the server can't be reached, this browser is logged out.
+    }
   };
 
   return (
