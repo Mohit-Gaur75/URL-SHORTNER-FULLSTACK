@@ -43,6 +43,38 @@ if (cookieSameSite === "none" && !cookieSecure) {
   process.exit(1);
 }
 
+// --- rate limiting --------------------------------------------------------
+// How many reverse proxies sit between the internet and this server (Render,
+// nginx, a load balancer...). It decides where the client's IP address comes
+// from. Too HIGH and any client can claim any IP by sending an X-Forwarded-For
+// header, which defeats every per-IP limit. Too LOW and, behind a proxy, every
+// visitor appears to have the proxy's IP and they all share one limit.
+// Default 0 = trust nobody, which is only right when no proxy is in front.
+const trustProxy = process.env.TRUST_PROXY === undefined ? 0 : Number(process.env.TRUST_PROXY);
+if (!Number.isInteger(trustProxy) || trustProxy < 0) {
+  console.error("❌ TRUST_PROXY must be a whole number of proxies (0, 1, 2...), not true/false");
+  process.exit(1);
+}
+if (isProduction && trustProxy === 0) {
+  console.warn("⚠️  TRUST_PROXY is 0. If this server runs behind a reverse proxy (Render, nginx...), set TRUST_PROXY=1 or every visitor will share one rate limit.");
+}
+
+// Scales every rate limit. For DEVELOPMENT only (e.g. 10 lets you register ten
+// test accounts an hour instead of one). Refused in production.
+const rateLimitMultiplier = process.env.RATE_LIMIT_MULTIPLIER === undefined ? 1 : Number(process.env.RATE_LIMIT_MULTIPLIER);
+if (!(rateLimitMultiplier > 0)) {
+  console.error("❌ RATE_LIMIT_MULTIPLIER must be a positive number");
+  process.exit(1);
+}
+if (isProduction && rateLimitMultiplier !== 1) {
+  console.error("❌ RATE_LIMIT_MULTIPLIER must not be set in production");
+  process.exit(1);
+}
+if (rateLimitMultiplier !== 1) {
+  console.warn(`⚠️  Rate limits are scaled by ${rateLimitMultiplier} (development setting)`);
+}
+
+
 module.exports = Object.freeze({
   nodeEnv,
   isProduction,
@@ -59,4 +91,6 @@ module.exports = Object.freeze({
     process.env.REFRESH_REUSE_GRACE_SECONDS !== undefined ? Number(process.env.REFRESH_REUSE_GRACE_SECONDS) : 10,
   cookieSameSite,
   cookieSecure,
+  trustProxy,
+  rateLimitMultiplier,
 });
