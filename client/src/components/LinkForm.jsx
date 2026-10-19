@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { createUrl } from "../api/urls";
 
-export default function LinkForm() {
+// `onCreated` is optional: the dashboard passes it to refresh its list after a link is
+// created. Without it (the Home page) the form behaves exactly as before.
+export default function LinkForm({ onCreated }) {
   const [originalUrl, setOriginalUrl] = useState("");
   const [customCode, setCustomCode] = useState("");
   const [result, setResult] = useState(null);
@@ -20,6 +22,11 @@ export default function LinkForm() {
         customCode: customCode.trim(),
       });
       setResult(data);
+      if (onCreated) {
+        setOriginalUrl("");
+        setCustomCode("");
+        onCreated(data);
+      }
     } catch (err) {
       setError(err.message);
     } finally {

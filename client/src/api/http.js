@@ -4,6 +4,7 @@ const API = `${import.meta.env.VITE_API_URL}/api`;
 
 export const CSRF_HEADER = { "X-Requested-With": "XMLHttpRequest" };
 
+
 let accessToken = null;
 export const setAccessToken = (token) => {
   accessToken = token;
@@ -33,8 +34,6 @@ export function refreshSession() {
   return refreshInFlight;
 }
 
-// ---- errors ----------------------------------------------------------------
-
 function toError(err) {
   const apiError = err.response?.data?.error;
   const message =
@@ -50,8 +49,6 @@ function toError(err) {
   return error;
 }
 
-// ---- interceptors ----------------------------------------------------------
-// Before every request: attach the access token if we have one
 http.interceptors.request.use((config) => {
   if (accessToken) config.headers.Authorization = `Bearer ${accessToken}`;
   config._sentWith = accessToken; // remember which token this request carried
@@ -62,16 +59,16 @@ http.interceptors.request.use((config) => {
 http.interceptors.response.use(
   (res) => res,
   async (err) => {
+    // A request we cancelled on purpose (see useLinks) is not an error: let it through untouched.
+    if (axios.isCancel(err)) return Promise.reject(err);
+
     const code = err.response?.data?.error?.code;
     const original = err.config;
 
-    // The access token expired (this happens every 15 minutes): get a new one
-    // and repeat the request. The user never notices. `_retried` makes sure we
-    // only ever try once.
     if (err.response?.status === 401 && code === "TOKEN_EXPIRED" && original && !original._retried) {
       original._retried = true;
 
-    
+  
       const alreadyRefreshed = accessToken && accessToken !== original._sentWith;
       if (!alreadyRefreshed) {
         try {
@@ -87,7 +84,6 @@ http.interceptors.response.use(
       return http(original);
     }
 
-    
     if (err.response?.status === 401 && (code === "TOKEN_REVOKED" || code === "INVALID_TOKEN")) {
       accessToken = null;
       onSessionEnded();
