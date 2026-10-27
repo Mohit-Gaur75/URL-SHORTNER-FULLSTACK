@@ -93,4 +93,6 @@ module.exports = Object.freeze({
   cookieSecure,
   trustProxy,
   rateLimitMultiplier,
+    // How long click events are kept before MongoDB deletes them (data minimization).
+  analyticsRetentionDays: Number(process.env.ANALYTICS_RETENTION_DAYS) || 365,
 });
