@@ -3,6 +3,7 @@ const { AppError, ConflictError, GoneError, NotFoundError } = require("../utils/
 const codes = require("../utils/shortCode");
 const escapeRegex = require("../utils/escapeRegex");
 const linkCache = require("./linkCache.service");
+const clickBuffer = require("./clickBuffer.service");
 const { recordClick } = require("./clickRecorder");
 
 const MAX_RANDOM_ATTEMPTS = 5;
@@ -115,17 +116,23 @@ async function resolveFromDatabase(code, { countClick = true, context = null } =
   throw await explainUnavailable(code, now);
 }
 
-// Counts a click asynchronously without delaying the visitor's HTTP redirect
+// Counts a click asynchronously without delaying the visitor's HTTP redirect.
+// If Redis is enabled, buffers to Redis; otherwise falls back directly to MongoDB.
 function countClickInBackground(code, linkId = null, context = null) {
-  const query = Url.updateOne(
-    { shortCode: code, status: { $in: ["active", null] } },
-    { $inc: { clicks: 1 }, $set: { lastClickedAt: new Date() } },
-    { timestamps: false }
-  );
-
-  Promise.resolve(typeof query?.exec === "function" ? query.exec() : query).catch((err) => {
-    if (process.env.NODE_ENV !== "test") console.warn("[click-count] failed:", err.message);
-  });
+  clickBuffer
+    .record(code)
+    .then((buffered) => {
+      if (buffered) return;
+      const query = Url.updateOne(
+        { shortCode: code, status: { $in: ["active", null] } },
+        { $inc: { clicks: 1 }, $set: { lastClickedAt: new Date() } },
+        { timestamps: false }
+      );
+      return Promise.resolve(typeof query?.exec === "function" ? query.exec() : query);
+    })
+    .catch((err) => {
+      if (process.env.NODE_ENV !== "test") console.warn("[click-count] failed:", err.message);
+    });
 
   if (linkId && context) {
     recordClick(linkId, context);

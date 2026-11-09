@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
+    "worker": "node worker.js",
     "test": "node --test",
     "check:api": "node scripts/manual-check-error.js",
     "migrate:phase4": "node scripts/migrate-phase4.js",
@@ -21,13 +22,14 @@
   "type": "commonjs",
   "dependencies": {
     "bcrypt": "^6.0.0",
+    "bullmq": "^6.7.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.0",
     "helmet": "^8.3.0",
-    "ioredis": "^6.0.0",
+    "ioredis": "^5.9.3",
     "jsonwebtoken": "^9.0.3",
     "mongodb": "^7.0.0",
     "mongoose": "^9.1.5",
