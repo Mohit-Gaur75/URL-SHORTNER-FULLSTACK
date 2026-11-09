@@ -1,6 +1,8 @@
 const rateLimit = require("express-rate-limit");
 const { ipKeyGenerator } = rateLimit;
+const { RedisStore } = require("rate-limit-redis");
 const env = require("../config/env");
+const { getRedis } = require("../config/redis");
 const { RateLimitError } = require("../utils/errors");
 
 const MINUTE = 60 * 1000;
@@ -9,9 +11,8 @@ const HOUR = 60 * MINUTE;
 const POLICIES = {
   globalFlood: { windowMs: MINUTE, limit: 1000 },
 
-  
-  loginPerIp: { windowMs: 15 * MINUTE, limit: 20 }, 
-  loginPerAccount: { windowMs: 15 * MINUTE, limit: 10 }, 
+  loginPerIp: { windowMs: 15 * MINUTE, limit: 20 },
+  loginPerAccount: { windowMs: 15 * MINUTE, limit: 10 },
 
   register: { windowMs: HOUR, limit: 10 },
 
@@ -31,9 +32,7 @@ const POLICIES = {
 
 const byIp = (req) => ipKeyGenerator(req.ip);
 
-
 const byUser = (req) => (req.user ? `user:${req.user._id}` : `ip:${byIp(req)}`);
-
 
 const byEmail = (req) => {
   const email = req.body?.email;
@@ -49,18 +48,35 @@ function waitText(resetTime) {
   return seconds < 90 ? `${seconds} seconds` : `${Math.ceil(seconds / 60)} minutes`;
 }
 
+/**
+ * Returns a Redis-backed store if Redis is available, or undefined (in-memory fallback)
+ */
+function getRateLimitStore(name) {
+  const redis = getRedis();
+  if (!redis) return undefined;
+  return new RedisStore({
+    sendCommand: (...args) => redis.call(...args),
+    prefix: `rl:${name}:`,
+  });
+}
+
 function makeLimiter({ name, windowMs, limit, key = byIp, failuresOnly = false, what = "requests", store }) {
+  const selectedStore = store !== undefined ? store : getRateLimitStore(name);
+
   return rateLimit({
     windowMs,
     limit: scaled(limit),
     keyGenerator: key,
     skipSuccessfulRequests: failuresOnly, // count only responses with status >= 400
-    standardHeaders: true, //                RateLimit-* headers tell well-behaved clients how much is left
+    standardHeaders: true, // RateLimit-* headers tell well-behaved clients how much quota is left
     legacyHeaders: false,
-    store,
+    store: selectedStore,
     handler: (req, res, next) => {
       if (env.nodeEnv !== "test") {
-        console.warn("[rate-limit]", JSON.stringify({ policy: name, requestId: req.id, method: req.method, path: req.originalUrl.split("?")[0] }));
+        console.warn(
+          "[rate-limit]",
+          JSON.stringify({ policy: name, requestId: req.id, method: req.method, path: req.originalUrl.split("?")[0] })
+        );
       }
       next(new RateLimitError(`Too many ${what}. Try again in ${waitText(req.rateLimit.resetTime)}.`));
     },
@@ -80,11 +96,11 @@ exports.analytics = limiter("analytics", { key: byUser, what: "analytics request
 exports.redirectMisses = limiter("redirectMisses", { failuresOnly: true, what: "requests for unknown links" });
 exports.passwordReset = limiter("passwordReset", { what: "password reset requests" });
 
-
 const createLinkAnonymous = limiter("createLinkAnonymous", { what: "links created" });
 const createLinkUser = limiter("createLinkUser", { key: byUser, what: "links created" });
 exports.createLink = (req, res, next) => (req.user ? createLinkUser : createLinkAnonymous)(req, res, next);
 
 exports.POLICIES = POLICIES;
 exports.makeLimiter = makeLimiter;
+exports.getRateLimitStore = getRateLimitStore;
 exports.keys = { byIp, byUser, byEmail };
