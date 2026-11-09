@@ -9,6 +9,7 @@ process.env.BASE_URL = "http://localhost:5000";
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const jwt = require("jsonwebtoken");
+const { signAccessToken } = require("../utils/tokens");
 
 const Url = require("../models/url.model");
 const User = require("../models/user.model");
@@ -91,11 +92,11 @@ test("creating a link: anonymous, owned, and bad-token cases", async (t) => {
     created.push(doc);
     return { _id: "x1", clicks: 0, status: "active", expiresAt: null, lastClickedAt: null, createdAt: new Date(), updatedAt: new Date(), ...doc };
   });
-  t.mock.method(User, "findById", async (id) => (id === USER_ID ? { _id: USER_ID } : null));
+  t.mock.method(User, "findById", async (id) => (id === USER_ID ? { _id: USER_ID, tokenVersion: 0 } : null));
 
   const { server, base } = await listen();
   t.after(() => server.close());
-  const token = jwt.sign({ id: USER_ID }, process.env.JWT_SECRET, { expiresIn: "1h" });
+  const token = signAccessToken({ _id: USER_ID, tokenVersion: 0 });
 
   await t.test("no token → created anonymously (user: null)", async () => {
     const res = await createLink(base, { originalUrl: "https://example.com/a" });

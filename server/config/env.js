@@ -73,6 +73,31 @@ if (isProduction && rateLimitMultiplier !== 1) {
 if (rateLimitMultiplier !== 1) {
   console.warn(`⚠️  Rate limits are scaled by ${rateLimitMultiplier} (development setting)`);
 }
+// --- cache (Redis) --------------------------------------------------------
+// Leave REDIS_URL unset to run without caching (every redirect hits MongoDB).
+const redisUrl = process.env.REDIS_URL || null;
+
+// The longest a cached link may be stale if an invalidation is ever missed.
+// Short = fresher data, more MongoDB reads. Long = the opposite.
+const cacheTtlSeconds = process.env.CACHE_TTL_SECONDS === undefined ? 300 : Number(process.env.CACHE_TTL_SECONDS);
+if (!Number.isInteger(cacheTtlSeconds) || cacheTtlSeconds < 1) {
+  console.error("❌ CACHE_TTL_SECONDS must be a whole number of seconds (1 or more)");
+  process.exit(1);
+}
+
+const jobsMode = (process.env.JOBS_MODE || "inline").toLowerCase();
+if (!["inline", "off"].includes(jobsMode)) {
+  console.error("❌ JOBS_MODE must be inline or off");
+  process.exit(1);
+}
+
+const clickFlushIntervalSeconds =
+  process.env.CLICK_FLUSH_INTERVAL_SECONDS === undefined ? 10 : Number(process.env.CLICK_FLUSH_INTERVAL_SECONDS);
+if (!Number.isInteger(clickFlushIntervalSeconds) || clickFlushIntervalSeconds < 1) {
+  console.error("❌ CLICK_FLUSH_INTERVAL_SECONDS must be a whole number of seconds (1 or more)");
+  process.exit(1);
+}
+
 
 
 module.exports = Object.freeze({
@@ -95,4 +120,8 @@ module.exports = Object.freeze({
   rateLimitMultiplier,
     // How long click events are kept before MongoDB deletes them (data minimization).
   analyticsRetentionDays: Number(process.env.ANALYTICS_RETENTION_DAYS) || 365,
+   redisUrl,
+  cacheTtlSeconds,
+    jobsMode,
+  clickFlushIntervalSeconds,
 });

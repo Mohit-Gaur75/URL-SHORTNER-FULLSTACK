@@ -1,10 +1,12 @@
 const env = require("./config/env"); // validates environment first; exits if invalid
 const app = require("./app");
 const connectDB = require("./config/db");
+const { connectRedis } = require("./config/redis");
 
 async function start() {
   // Connect BEFORE accepting traffic, so no request ever hits a dead database
   await connectDB();
+  connectRedis(); // not awaited on purpose: the server starts even if Redis is down
 
   app.listen(env.port, () => {
     console.log(`🚀 Server running on port ${env.port} (${env.nodeEnv})`);
