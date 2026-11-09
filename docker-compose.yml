@@ -1,0 +1,117 @@
+services:
+  # Database Layer: MongoDB 7.0 with persistent storage and health monitoring
+  mongo:
+    image: mongo:7.0
+    container_name: url-shortener-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - url_network
+    restart: unless-stopped
+
+  # In-Memory Cache & Message Broker: Redis 7.4 Alpine
+  redis:
+    image: redis:7.4-alpine
+    container_name: url-shortener-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - url_network
+    restart: unless-stopped
+
+  # Core API Service: Express 5 REST API
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: url-shortener-api
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - MONGO_URI=mongodb://mongo:27017/url-shortener
+      - REDIS_URL=redis://redis:6379
+      - BASE_URL=http://localhost:5000
+      - CLIENT_URL=http://localhost:3000
+      - JWT_SECRET=production_grade_secret_jwt_key_that_is_at_least_32_characters_long
+      - ACCESS_TOKEN_EXPIRES_IN=15m
+      - REFRESH_TOKEN_DAYS=30
+      - COOKIE_SAMESITE=lax
+      - COOKIE_SECURE=false
+      - TRUST_PROXY=1
+      - JOBS_MODE=off
+      - CACHE_TTL_SECONDS=300
+      - CLICK_FLUSH_INTERVAL_SECONDS=10
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - url_network
+    restart: unless-stopped
+
+  # Background Worker: BullMQ queue consumer for click batching & maintenance
+  worker:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: url-shortener-worker
+    command: ["node", "worker.js"]
+    environment:
+      - NODE_ENV=production
+      - MONGO_URI=mongodb://mongo:27017/url-shortener
+      - REDIS_URL=redis://redis:6379
+      - BASE_URL=http://localhost:5000
+      - JWT_SECRET=production_grade_secret_jwt_key_that_is_at_least_32_characters_long
+      - JOBS_MODE=inline
+      - CLICK_FLUSH_INTERVAL_SECONDS=10
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - url_network
+    restart: unless-stopped
+
+  # Frontend Web UI: React 19 + Vite served via optimized Nginx
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=http://localhost:5000
+    container_name: url-shortener-client
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    networks:
+      - url_network
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
+  redis_data:
+
+networks:
+  url_network:
+    driver: bridge
