@@ -3,6 +3,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const env = require("./config/env");
 const requestId = require("./middleware/requestId");
+const requestLogger = require("./middleware/requestLogger");
 const { sanitize } = require("./middleware/sanitize");
 const preventHpp = require("./middleware/preventHpp");
 const notFound = require("./middleware/notFound");
@@ -16,6 +17,9 @@ app.set("trust proxy", env.trustProxy);
 
 // 1. Request ID assignment (first, so all logs and errors carry the ID)
 app.use(requestId);
+
+// 2. Structured request logging (tracks method, route, latency, and status)
+app.use(requestLogger);
 
 // 2. Production Security Headers with Helmet
 app.use(
