@@ -7,7 +7,13 @@ process.env.BASE_URL = "http://localhost:5000";
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const mongoose = require("mongoose");
-const bcrypt = require("bcryptjs");
+const bcrypt = (() => {
+  try {
+    return require("bcrypt");
+  } catch {
+    return require("bcryptjs");
+  }
+})();
 
 const app = require("../app");
 const User = require("../models/user.model");

@@ -106,18 +106,24 @@ jobs:
       - name: Build and Start Multi-Container Stack
         run: docker compose up --build -d
 
-      - name: Await Service Health (Max 60s)
+      - name: Await Service Health (Max 90s)
         run: |
           echo "Waiting for services to become healthy..."
-          for i in {1..30}; do
+          HEALTHY=false
+          for i in {1..45}; do
             STATUS=$(docker inspect --format='{{json .State.Health.Status}}' url-shortener-api 2>/dev/null || echo '"starting"')
             if [ "$STATUS" == '"healthy"' ]; then
               echo "✅ url-shortener-api is healthy!"
+              HEALTHY=true
               break
             fi
             echo "Attempt $i: API status is $STATUS. Waiting 2s..."
             sleep 2
           done
+          if [ "$HEALTHY" != "true" ]; then
+            echo "❌ Service url-shortener-api failed to reach healthy state!"
+            exit 1
+          fi
 
       - name: Execute End-to-End Live Container Smoke Test
         run: |
