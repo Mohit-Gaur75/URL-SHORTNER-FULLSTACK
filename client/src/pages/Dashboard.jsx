@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { deleteUrl, updateUrl } from "../api/urls";
@@ -329,6 +329,97 @@ export default function Dashboard() {
             <span className="stat-value" style={{ fontSize: "1.15rem", color: "#c084fc" }}>Sub-1ms Redis</span>
           </div>
         </div>
+      </div>
+
+      {/* Quick Hub Navigation Cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px", marginBottom: "28px" }}>
+        <Link
+          to="/links"
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: "var(--radius-md)",
+            padding: "16px 20px",
+            textDecoration: "none",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            transition: "all var(--transition-fast)",
+          }}
+          className="dashboard-module-pill"
+        >
+          <div>
+            <span style={{ fontWeight: 600, color: "var(--text-primary)", display: "block" }}>My Links Hub</span>
+            <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Manage &amp; filter {totalCount} links</span>
+          </div>
+          <span style={{ color: "var(--primary)", fontSize: "1.2rem" }}>&rarr;</span>
+        </Link>
+
+        <Link
+          to="/create"
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: "var(--radius-md)",
+            padding: "16px 20px",
+            textDecoration: "none",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            transition: "all var(--transition-fast)",
+          }}
+          className="dashboard-module-pill"
+        >
+          <div>
+            <span style={{ fontWeight: 600, color: "var(--text-primary)", display: "block" }}>Link Studio</span>
+            <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Vanity slugs &amp; UTM builder</span>
+          </div>
+          <span style={{ color: "var(--primary)", fontSize: "1.2rem" }}>&rarr;</span>
+        </Link>
+
+        <Link
+          to="/analytics"
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: "var(--radius-md)",
+            padding: "16px 20px",
+            textDecoration: "none",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            transition: "all var(--transition-fast)",
+          }}
+          className="dashboard-module-pill"
+        >
+          <div>
+            <span style={{ fontWeight: 600, color: "var(--text-primary)", display: "block" }}>Click Analytics</span>
+            <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Devices &amp; timeseries charts</span>
+          </div>
+          <span style={{ color: "var(--primary)", fontSize: "1.2rem" }}>&rarr;</span>
+        </Link>
+
+        <Link
+          to="/system-status"
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: "var(--radius-md)",
+            padding: "16px 20px",
+            textDecoration: "none",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            transition: "all var(--transition-fast)",
+          }}
+          className="dashboard-module-pill"
+        >
+          <div>
+            <span style={{ fontWeight: 600, color: "var(--text-primary)", display: "block" }}>System Status</span>
+            <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>MongoDB &amp; Redis telemetry</span>
+          </div>
+          <span style={{ color: "var(--primary)", fontSize: "1.2rem" }}>&rarr;</span>
+        </Link>
       </div>
 
       {/* Quick Shortener Section */}
