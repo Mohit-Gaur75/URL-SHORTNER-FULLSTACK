@@ -1,7 +1,6 @@
 import { useState } from "react";
 import Modal from "./Modal";
 
-// <input type="datetime-local"> wants "2026-11-30T14:30" in the user's own time zone.
 function toLocalInput(iso) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -19,11 +18,13 @@ function EditForm({ link, onSave, onCancel }) {
   const submit = async (event) => {
     event.preventDefault();
 
-    // Send ONLY what changed. An already-expired link keeps its old expiry untouched
-    // unless the user edits it (sending a past date would be rejected).
     const changes = {};
-    if (originalUrl.trim() !== link.originalUrl) changes.originalUrl = originalUrl.trim();
-    if (expiry !== initialExpiry) changes.expiresAt = expiry ? new Date(expiry).toISOString() : null;
+    if (originalUrl.trim() !== link.originalUrl) {
+      changes.originalUrl = originalUrl.trim();
+    }
+    if (expiry !== initialExpiry) {
+      changes.expiresAt = expiry ? new Date(expiry).toISOString() : null;
+    }
     if (Object.keys(changes).length === 0) return onCancel();
 
     setSaving(true);
@@ -31,34 +32,87 @@ function EditForm({ link, onSave, onCancel }) {
     try {
       await onSave(changes);
     } catch (err) {
-      setError(err.message); // e.g. "Only http and https URLs are allowed": shown inside the dialog
+      setError(err.message);
       setSaving(false);
     }
   };
 
   return (
     <form onSubmit={submit}>
-      <p className="muted">
-        Short link <strong>{link.shortCode}</strong> keeps working: only its destination and expiry can change.
+      <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", marginBottom: "18px" }}>
+        Short slug <strong style={{ color: "var(--primary)" }}>{link.shortCode}</strong> remains immutable. You can update its destination URL and expiration timestamp.
       </p>
 
-      <label htmlFor="edit-url">Destination</label>
-      <input id="edit-url" type="text" value={originalUrl} onChange={(e) => setOriginalUrl(e.target.value)} required />
-
-      <label htmlFor="edit-expiry">Expires</label>
-      <div className="inline">
-        <input id="edit-expiry" type="datetime-local" value={expiry} onChange={(e) => setExpiry(e.target.value)} />
-        <button type="button" className="ghost" onClick={() => setExpiry("")} disabled={!expiry}>Never</button>
+      <div className="form-group">
+        <label className="form-label" htmlFor="edit-url">
+          Destination URL
+        </label>
+        <input
+          id="edit-url"
+          type="url"
+          className="form-input"
+          value={originalUrl}
+          onChange={(e) => setOriginalUrl(e.target.value)}
+          required
+        />
       </div>
-      <p className="muted small">
-        {link.isExpired ? "This link has expired. Choose a new date to bring it back." : "Leave empty for a link that never expires."}
-      </p>
 
-      {error && <p className="error" role="alert">{error}</p>}
+      <div className="form-group">
+        <label className="form-label" htmlFor="edit-expiry">
+          Link Expiration
+        </label>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <input
+            id="edit-expiry"
+            type="datetime-local"
+            className="form-input"
+            value={expiry}
+            onChange={(e) => setExpiry(e.target.value)}
+          />
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => setExpiry("")}
+            disabled={!expiry}
+            style={{ whiteSpace: "nowrap" }}
+          >
+            Clear Expiry
+          </button>
+        </div>
+        <p className="form-helper">
+          {link.isExpired
+            ? "This link has expired. Set a future date to re-activate it."
+            : "Leave empty for permanent links that never expire."}
+        </p>
+      </div>
+
+      {error && (
+        <div className="alert-error" role="alert">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <span>{error}</span>
+        </div>
+      )}
 
       <div className="modal-actions">
-        <button type="button" className="ghost" onClick={onCancel} disabled={saving}>Cancel</button>
-        <button type="submit" disabled={saving}>{saving ? "Saving…" : "Save changes"}</button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={onCancel}
+          disabled={saving}
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          className="btn btn-primary"
+          disabled={saving}
+        >
+          {saving ? "Saving Changes..." : "Save Changes"}
+        </button>
       </div>
     </form>
   );
@@ -66,7 +120,7 @@ function EditForm({ link, onSave, onCancel }) {
 
 export default function EditLinkDialog({ link, onSave, onCancel }) {
   return (
-    <Modal open={Boolean(link)} title="Edit link" onClose={onCancel}>
+    <Modal open={Boolean(link)} title="Edit Short Link" onClose={onCancel}>
       {link && <EditForm link={link} onSave={onSave} onCancel={onCancel} />}
     </Modal>
   );
