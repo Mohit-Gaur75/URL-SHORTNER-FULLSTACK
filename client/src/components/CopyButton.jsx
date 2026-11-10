@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { useToast } from "../context/ToastContext";
 
-export default function CopyButton({ text, label = "Copy" }) {
+export default function CopyButton({ text, label = "Copy", silent = false }) {
   const [state, setState] = useState("idle"); // idle | copied | failed
   const timer = useRef(null);
+  const { showSuccess, showError } = useToast();
 
   useEffect(() => () => clearTimeout(timer.current), []);
 
@@ -10,8 +12,14 @@ export default function CopyButton({ text, label = "Copy" }) {
     try {
       await navigator.clipboard.writeText(text);
       setState("copied");
+      if (!silent) {
+        showSuccess("Copied to clipboard!");
+      }
     } catch {
       setState("failed");
+      if (!silent) {
+        showError("Failed to copy to clipboard");
+      }
     }
     clearTimeout(timer.current);
     timer.current = setTimeout(() => setState("idle"), 1500);

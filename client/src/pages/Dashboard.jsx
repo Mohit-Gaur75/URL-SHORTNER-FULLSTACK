@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
 import { deleteUrl, updateUrl } from "../api/urls";
 import { useLinks } from "../hooks/useLinks";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
@@ -9,6 +10,8 @@ import LinksTable from "../components/LinksTable";
 import Pagination from "../components/Pagination";
 import EditLinkDialog from "../components/EditLinkDialog";
 import ConfirmDialog from "../components/ConfirmDialog";
+import QrCodeModal from "../components/QrCodeModal";
+import LinkDetailsModal from "../components/LinkDetailsModal";
 import "./dashboard.css";
 
 const PAGE_SIZE = 10;
@@ -41,6 +44,7 @@ function readQuery(searchParams) {
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { showSuccess, showError } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const query = useMemo(() => readQuery(searchParams), [searchParams]);
 
@@ -106,32 +110,49 @@ export default function Dashboard() {
   const [actionError, setActionError] = useState("");
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
+  const [qrModalUrl, setQrModalUrl] = useState(null);
+  const [detailsLink, setDetailsLink] = useState(null);
 
   const toggle = async (link) => {
     setBusyId(link.id);
     setActionError("");
+    const newStatus = link.status === "disabled" ? "active" : "disabled";
     try {
       await updateUrl(link.id, {
-        status: link.status === "disabled" ? "active" : "disabled",
+        status: newStatus,
       });
+      showSuccess(newStatus === "active" ? "Link activated!" : "Link disabled");
       reload();
     } catch (err) {
-      setActionError(err.message);
+      const msg = err.message || "Failed to update link status";
+      setActionError(msg);
+      showError(msg);
     } finally {
       setBusyId(null);
     }
   };
 
   const saveEdit = async (changes) => {
-    await updateUrl(editing.id, changes);
-    setEditing(null);
-    reload();
+    try {
+      await updateUrl(editing.id, changes);
+      showSuccess("Link destination updated successfully!");
+      setEditing(null);
+      reload();
+    } catch (err) {
+      showError(err.message || "Failed to save link updates");
+      throw err;
+    }
   };
 
   const confirmDelete = async () => {
-    await deleteUrl(deleting.id);
-    setDeleting(null);
-    reload();
+    try {
+      await deleteUrl(deleting.id);
+      showSuccess("Link deleted. Code now returns HTTP 410 Gone.");
+      setDeleting(null);
+      reload();
+    } catch (err) {
+      showError(err.message || "Failed to delete link");
+    }
   };
 
   const clearFilters = () => {
@@ -224,6 +245,8 @@ export default function Dashboard() {
           onToggle={toggle}
           onEdit={setEditing}
           onDelete={setDeleting}
+          onOpenQr={setQrModalUrl}
+          onOpenDetails={setDetailsLink}
         />
         <div className="table-footer">
           <p aria-live="polite">
@@ -415,12 +438,14 @@ export default function Dashboard() {
         {content}
       </section>
 
-      {/* Edit and Confirm Modals */}
+      {/* Edit Dialog */}
       <EditLinkDialog
         link={editing}
         onSave={saveEdit}
         onCancel={() => setEditing(null)}
       />
+
+      {/* Confirm Deletion Dialog */}
       <ConfirmDialog
         open={Boolean(deleting)}
         title="Delete this link?"
@@ -432,6 +457,24 @@ export default function Dashboard() {
         confirmLabel="Yes, Delete Link"
         onConfirm={confirmDelete}
         onCancel={() => setDeleting(null)}
+      />
+
+      {/* QR Code Modal */}
+      <QrCodeModal
+        isOpen={Boolean(qrModalUrl)}
+        onClose={() => setQrModalUrl(null)}
+        shortUrl={qrModalUrl}
+      />
+
+      {/* Telemetry & Analytics Modal */}
+      <LinkDetailsModal
+        link={detailsLink}
+        isOpen={Boolean(detailsLink)}
+        onClose={() => setDetailsLink(null)}
+        onOpenQr={(url) => setQrModalUrl(url)}
+        onOpenEdit={(link) => setEditing(link)}
+        onToggleStatus={(link) => toggle(link)}
+        onOpenDelete={(link) => setDeleting(link)}
       />
     </div>
   );

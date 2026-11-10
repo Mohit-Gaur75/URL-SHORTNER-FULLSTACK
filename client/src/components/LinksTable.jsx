@@ -20,6 +20,8 @@ export default function LinksTable({
   onToggle,
   onEdit,
   onDelete,
+  onOpenQr,
+  onOpenDetails,
 }) {
   return (
     <div className="table-wrap" aria-busy={dimmed}>
@@ -112,6 +114,43 @@ export default function LinksTable({
 
                 <td>
                   <div className="table-actions">
+                    {onOpenDetails && (
+                      <button
+                        type="button"
+                        className="btn-icon"
+                        disabled={busy}
+                        onClick={() => onOpenDetails(link)}
+                        title="View analytics & telemetry"
+                        aria-label={`Analytics for ${link.shortCode}`}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="10" />
+                          <line x1="12" y1="16" x2="12" y2="12" />
+                          <line x1="12" y1="8" x2="12.01" y2="8" />
+                        </svg>
+                        <span>Telemetry</span>
+                      </button>
+                    )}
+
+                    {onOpenQr && (
+                      <button
+                        type="button"
+                        className="btn-icon"
+                        disabled={busy}
+                        onClick={() => onOpenQr(link.shortUrl)}
+                        title="Generate QR code"
+                        aria-label={`QR for ${link.shortCode}`}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="3" y="3" width="7" height="7" />
+                          <rect x="14" y="3" width="7" height="7" />
+                          <rect x="14" y="14" width="7" height="7" />
+                          <rect x="3" y="14" width="7" height="7" />
+                        </svg>
+                        <span>QR</span>
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       className="btn-icon"
