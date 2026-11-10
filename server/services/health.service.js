@@ -4,6 +4,16 @@ const { getRedis } = require("../config/redis");
 
 const PING_TIMEOUT_MS = 2000;
 
+let isShuttingDown = false;
+
+function setShuttingDown(val = true) {
+  isShuttingDown = val;
+}
+
+function getIsShuttingDown() {
+  return isShuttingDown;
+}
+
 /**
  * Race a promise against a strict timeout.
  */
@@ -114,6 +124,17 @@ function getSystemMetrics() {
  * Run full readiness checks across downstream dependencies.
  */
 async function getReadiness() {
+  if (isShuttingDown) {
+    return {
+      isReady: false,
+      status: "shutting_down",
+      checks: {
+        database: { status: "draining" },
+        redis: { status: "draining" },
+      },
+    };
+  }
+
   const [db, redis] = await Promise.all([checkDatabase(), checkRedis()]);
 
   // MongoDB is our source of truth. If DB is down, we cannot serve requests.
@@ -167,4 +188,6 @@ module.exports = {
   getSystemMetrics,
   getReadiness,
   getDetailedHealth,
+  setShuttingDown,
+  getIsShuttingDown,
 };

@@ -4,6 +4,7 @@ const connectDB = require("./config/db");
 const { connectRedis } = require("./config/redis");
 const { startJobs } = require("./jobs");
 const logger = require("./config/logger");
+const { createGracefulShutdown } = require("./utils/gracefulShutdown");
 
 async function start() {
   // Connect BEFORE accepting traffic, so no request ever hits a dead database
@@ -14,9 +15,12 @@ async function start() {
     startJobs().catch((err) => logger.error({ err }, "Failed to start background jobs"));
   }
 
-  app.listen(env.port, () => {
+  const server = app.listen(env.port, () => {
     logger.info(`🚀 Server running on port ${env.port} (${env.nodeEnv})`);
   });
+
+  const shutdownCoordinator = createGracefulShutdown({ server, logger });
+  shutdownCoordinator.register();
 }
 
 start().catch((err) => {
