@@ -278,4 +278,22 @@ async function listUrlsFor(actor, { page, limit, sort, order, status, search }) 
   return { items, page, limit, total, totalPages: Math.ceil(total / limit) };
 }
 
-module.exports = { createShortUrl, resolveShortCode, getUrlFor, updateUrlFor, deleteUrlFor, listUrlsFor };
+async function bulkCreateShortUrls({ items, userId }) {
+  const results = [];
+  for (const item of items) {
+    try {
+      const { url, created } = await createShortUrl({
+        originalUrl: item.originalUrl,
+        customCode: item.customCode,
+        expiresAt: item.expiresAt,
+        userId,
+      });
+      results.push({ success: true, url, created, originalUrl: item.originalUrl });
+    } catch (err) {
+      results.push({ success: false, originalUrl: item.originalUrl, error: err.message });
+    }
+  }
+  return results;
+}
+
+module.exports = { createShortUrl, bulkCreateShortUrls, resolveShortCode, getUrlFor, updateUrlFor, deleteUrlFor, listUrlsFor };

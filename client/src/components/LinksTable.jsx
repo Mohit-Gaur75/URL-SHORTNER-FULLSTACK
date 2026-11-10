@@ -13,6 +13,38 @@ const displayStatus = (link) =>
     ? "expired"
     : "active";
 
+function renderExpiration(link, status) {
+  if (!link.expiresAt) {
+    return <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", display: "block", marginTop: "4px" }}>Lifetime</span>;
+  }
+  const expiryTime = new Date(link.expiresAt).getTime();
+  const diffMs = expiryTime - Date.now();
+
+  if (diffMs <= 0 || status === "expired") {
+    return (
+      <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "4px" }}>
+        Expired {dateFormat.format(new Date(link.expiresAt))}
+      </div>
+    );
+  }
+
+  const hoursLeft = Math.floor(diffMs / (1000 * 60 * 60));
+  if (hoursLeft < 24) {
+    return (
+      <div style={{ fontSize: "0.75rem", color: "#fbbf24", fontWeight: 600, marginTop: "4px" }}>
+        ⏳ {hoursLeft}h left
+      </div>
+    );
+  }
+
+  const daysLeft = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  return (
+    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "4px" }}>
+      Expires in {daysLeft}d
+    </div>
+  );
+}
+
 export default function LinksTable({
   links,
   busyId,
@@ -94,18 +126,7 @@ export default function LinksTable({
 
                 <td>
                   <span className={`badge badge-${status}`}>{status}</span>
-                  {link.expiresAt && (
-                    <div
-                      style={{
-                        fontSize: "0.75rem",
-                        color: "var(--text-muted)",
-                        marginTop: "4px",
-                      }}
-                    >
-                      {status === "expired" ? "Expired " : "Expires "}
-                      {dateFormat.format(new Date(link.expiresAt))}
-                    </div>
-                  )}
+                  {renderExpiration(link, status)}
                 </td>
 
                 <td style={{ color: "var(--text-secondary)", fontSize: "0.85rem", whiteSpace: "nowrap" }}>

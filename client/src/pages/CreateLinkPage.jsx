@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { createUrl } from "../api/urls";
+import { createUrl, bulkCreateUrls } from "../api/urls";
 import { useToast } from "../context/ToastContext";
+import { downloadCsv } from "../utils/exportCsv";
 import QrCodeModal from "../components/QrCodeModal";
 
 const EXPIRATION_PRESETS = [
@@ -13,6 +14,9 @@ const EXPIRATION_PRESETS = [
 ];
 
 export default function CreateLinkPage() {
+  const [activeTab, setActiveTab] = useState("single"); // "single" | "batch"
+
+  // Single URL Mode state
   const [destinationUrl, setDestinationUrl] = useState("");
   const [customSlug, setCustomSlug] = useState("");
   const [selectedPreset, setSelectedPreset] = useState(EXPIRATION_PRESETS[0]);
@@ -26,11 +30,15 @@ export default function CreateLinkPage() {
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
   const [copied, setCopied] = useState(false);
-  const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [qrModalUrl, setQrModalUrl] = useState(null);
+
+  // Batch Mode state
+  const [batchRawText, setBatchRawText] = useState("");
+  const [batchResult, setBatchResult] = useState(null);
 
   const { showSuccess, showError } = useToast();
 
-  // Compute final destination with UTM params
+  // Compute final single destination with UTM params
   const fullTargetUrl = useMemo(() => {
     if (!destinationUrl.trim()) return "";
     try {
@@ -44,24 +52,35 @@ export default function CreateLinkPage() {
     }
   }, [destinationUrl, utmSource, utmMedium, utmCampaign]);
 
-  const handleSubmit = async (e) => {
+  // Compute batch URLs list
+  const parsedBatchUrls = useMemo(() => {
+    if (!batchRawText.trim()) return [];
+    return batchRawText
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && (line.startsWith("http://") || line.startsWith("https://")));
+  }, [batchRawText]);
+
+  const computeExpiresAt = () => {
+    if (selectedPreset.hours === "custom") {
+      return customExpiry ? new Date(customExpiry).toISOString() : null;
+    }
+    if (typeof selectedPreset.hours === "number") {
+      const d = new Date();
+      d.setHours(d.getHours() + selectedPreset.hours);
+      return d.toISOString();
+    }
+    return null;
+  };
+
+  const handleSingleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setResult(null);
     setLoading(true);
 
     try {
-      let expiresAt = null;
-      if (selectedPreset.hours === "custom") {
-        if (customExpiry) {
-          expiresAt = new Date(customExpiry).toISOString();
-        }
-      } else if (typeof selectedPreset.hours === "number") {
-        const d = new Date();
-        d.setHours(d.getHours() + selectedPreset.hours);
-        expiresAt = d.toISOString();
-      }
-
+      const expiresAt = computeExpiresAt();
       const res = await createUrl({
         originalUrl: fullTargetUrl,
         customCode: customSlug.trim() || undefined,
@@ -79,7 +98,41 @@ export default function CreateLinkPage() {
     }
   };
 
-  const handleCopy = async () => {
+  const handleBatchSubmit = async (e) => {
+    e.preventDefault();
+    if (parsedBatchUrls.length === 0) {
+      showError("Please provide at least one valid http/https URL");
+      return;
+    }
+    if (parsedBatchUrls.length > 50) {
+      showError("Maximum 50 URLs can be shortened in a single batch");
+      return;
+    }
+
+    setError("");
+    setBatchResult(null);
+    setLoading(true);
+
+    try {
+      const expiresAt = computeExpiresAt();
+      const payload = parsedBatchUrls.map((originalUrl) => ({
+        originalUrl,
+        expiresAt,
+      }));
+
+      const res = await bulkCreateUrls(payload);
+      setBatchResult(res);
+      showSuccess(`Batch complete: ${res.successful} of ${res.total} links shortened!`);
+    } catch (err) {
+      const msg = err.message || "Failed to process batch shortening";
+      setError(msg);
+      showError(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCopySingle = async () => {
     if (!result?.shortUrl) return;
     try {
       await navigator.clipboard.writeText(result.shortUrl);
@@ -91,6 +144,34 @@ export default function CreateLinkPage() {
     }
   };
 
+  const handleCopyAllBatch = async () => {
+    if (!batchResult?.items) return;
+    const urls = batchResult.items
+      .filter((i) => i.success)
+      .map((i) => i.shortUrl)
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(urls);
+      showSuccess(`Copied ${batchResult.successful} short links to clipboard!`);
+    } catch {
+      showError("Could not copy batch links");
+    }
+  };
+
+  const handleExportBatchCsv = () => {
+    if (!batchResult?.items) return;
+    const headers = ["Original Destination URL", "Short Code", "Short URL", "Status", "Error"];
+    const rows = batchResult.items.map((i) => [
+      i.originalUrl,
+      i.shortCode || "—",
+      i.shortUrl || "—",
+      i.success ? "Success" : "Failed",
+      i.error || "—",
+    ]);
+    downloadCsv(`shortlink-batch-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+    showSuccess("Batch results exported to CSV");
+  };
+
   const handleReset = () => {
     setDestinationUrl("");
     setCustomSlug("");
@@ -100,21 +181,48 @@ export default function CreateLinkPage() {
     setUtmMedium("");
     setUtmCampaign("");
     setResult(null);
+    setBatchResult(null);
+    setBatchRawText("");
     setError("");
   };
 
   return (
-    <div className="dashboard-container" style={{ maxWidth: 880 }}>
+    <div className="dashboard-container" style={{ maxWidth: 900 }}>
       <div className="dashboard-header">
         <div className="dashboard-title-group">
           <h1>Link Creation Studio</h1>
           <p className="dashboard-subtitle">
-            Craft high-performance vanity URLs, configure marketing attribution parameters, and generate QR assets.
+            Generate vanity URLs, build attribution campaigns, or process bulk URL batches in parallel.
           </p>
+        </div>
+
+        {/* Mode Switcher Tabs */}
+        <div className="filter-tabs" role="group" aria-label="Creation Mode" style={{ marginTop: 0 }}>
+          <button
+            type="button"
+            className={activeTab === "single" ? "filter-tab active" : "filter-tab"}
+            onClick={() => {
+              setActiveTab("single");
+              setError("");
+            }}
+          >
+            Single Link Studio
+          </button>
+          <button
+            type="button"
+            className={activeTab === "batch" ? "filter-tab active" : "filter-tab"}
+            onClick={() => {
+              setActiveTab("batch");
+              setError("");
+            }}
+          >
+            Batch Shortener (Bulk)
+          </button>
         </div>
       </div>
 
-      {result ? (
+      {/* SINGLE URL RESULT SCREEN */}
+      {activeTab === "single" && result && (
         <div
           className="dashboard-card"
           style={{
@@ -137,7 +245,7 @@ export default function CreateLinkPage() {
               margin: "0 auto 16px",
             }}
           >
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <polyline points="20 6 9 17 4 12" />
             </svg>
           </div>
@@ -183,31 +291,16 @@ export default function CreateLinkPage() {
             <button
               type="button"
               className={copied ? "btn btn-secondary" : "btn btn-primary"}
-              onClick={handleCopy}
+              onClick={handleCopySingle}
               style={{ gap: "8px", minWidth: 120 }}
             >
-              {copied ? (
-                <>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                  <span>Copied!</span>
-                </>
-              ) : (
-                <>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                  </svg>
-                  <span>Copy Link</span>
-                </>
-              )}
+              {copied ? "Copied!" : "Copy Link"}
             </button>
 
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={() => setQrModalOpen(true)}
+              onClick={() => setQrModalUrl(result.shortUrl)}
               style={{ gap: "8px" }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -234,22 +327,14 @@ export default function CreateLinkPage() {
               View in My Links Hub &rarr;
             </Link>
           </div>
-
-          <QrCodeModal
-            isOpen={qrModalOpen}
-            onClose={() => setQrModalOpen(false)}
-            shortUrl={result.shortUrl}
-          />
         </div>
-      ) : (
-        <form onSubmit={handleSubmit} className="dashboard-card" style={{ padding: "32px" }}>
+      )}
+
+      {/* SINGLE URL INPUT FORM */}
+      {activeTab === "single" && !result && (
+        <form onSubmit={handleSingleSubmit} className="dashboard-card" style={{ padding: "32px" }}>
           {error && (
             <div className="alert-error" role="alert" style={{ marginBottom: "24px" }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <line x1="12" y1="16" x2="12.01" y2="16" />
-              </svg>
               <span>{error}</span>
             </div>
           )}
@@ -425,7 +510,6 @@ export default function CreateLinkPage() {
             )}
           </div>
 
-          {/* Submit */}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "24px" }}>
             <Link to="/links" className="btn btn-secondary">
               Cancel
@@ -441,6 +525,172 @@ export default function CreateLinkPage() {
           </div>
         </form>
       )}
+
+      {/* BATCH BULK SHORTENER SCREEN */}
+      {activeTab === "batch" && (
+        <div className="dashboard-card" style={{ padding: "32px" }}>
+          {error && (
+            <div className="alert-error" role="alert" style={{ marginBottom: "24px" }}>
+              <span>{error}</span>
+            </div>
+          )}
+
+          {batchResult ? (
+            <div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "16px",
+                  paddingBottom: "20px",
+                  borderBottom: "1px solid var(--border-subtle)",
+                  marginBottom: "20px",
+                }}
+              >
+                <div>
+                  <h2 style={{ fontSize: "1.3rem", fontWeight: 700, margin: 0 }}>
+                    Batch Generation Completed
+                  </h2>
+                  <p style={{ margin: "4px 0 0", color: "var(--text-secondary)", fontSize: "0.875rem" }}>
+                    Successfully created <strong>{batchResult.successful}</strong> of <strong>{batchResult.total}</strong> links.
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                  <button type="button" className="btn btn-primary btn-sm" onClick={handleCopyAllBatch}>
+                    Copy All Links
+                  </button>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={handleExportBatchCsv}>
+                    Download CSV
+                  </button>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={handleReset}>
+                    New Batch
+                  </button>
+                </div>
+              </div>
+
+              {/* Batch Results Table */}
+              <div className="table-wrap">
+                <table className="modern-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Destination URL</th>
+                      <th scope="col">Short Link</th>
+                      <th scope="col">Status</th>
+                      <th scope="col" style={{ textAlign: "right" }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {batchResult.items.map((item, idx) => (
+                      <tr key={idx}>
+                        <td style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {item.originalUrl}
+                        </td>
+                        <td>
+                          {item.success ? (
+                            <code style={{ color: "#38bdf8", fontWeight: 600 }}>{item.shortUrl}</code>
+                          ) : (
+                            <span style={{ color: "var(--danger)", fontSize: "0.85rem" }}>{item.error}</span>
+                          )}
+                        </td>
+                        <td>
+                          <span className={item.success ? "badge badge-active" : "badge badge-expired"}>
+                            {item.success ? "Success" : "Failed"}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          {item.success && (
+                            <div style={{ display: "inline-flex", gap: "6px" }}>
+                              <button
+                                type="button"
+                                className="action-chip-btn"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(item.shortUrl);
+                                  showSuccess("Copied: " + item.shortUrl);
+                                }}
+                              >
+                                Copy
+                              </button>
+                              <button
+                                type="button"
+                                className="action-chip-btn"
+                                onClick={() => setQrModalUrl(item.shortUrl)}
+                              >
+                                QR
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={handleBatchSubmit}>
+              <div className="form-group">
+                <label className="form-label" htmlFor="batch-urls">
+                  Destination URLs (One per line, up to 50 URLs)
+                </label>
+                <textarea
+                  id="batch-urls"
+                  rows={8}
+                  className="form-input"
+                  style={{ fontFamily: "var(--font-mono)", fontSize: "0.875rem", lineHeight: 1.5 }}
+                  placeholder={`https://github.com/project-a\nhttps://example.com/promo-2\nhttps://news.ycombinator.com`}
+                  value={batchRawText}
+                  onChange={(e) => setBatchRawText(e.target.value)}
+                  required
+                />
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px", fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                  <span>Paste raw URLs or links extracted from a spreadsheet.</span>
+                  <span style={{ color: parsedBatchUrls.length > 0 ? "#60a5fa" : "var(--text-muted)", fontWeight: 600 }}>
+                    {parsedBatchUrls.length} valid URL{parsedBatchUrls.length === 1 ? "" : "s"} detected
+                  </span>
+                </div>
+              </div>
+
+              {/* Shared Expiration Settings for Batch */}
+              <div className="form-group" style={{ marginTop: "20px" }}>
+                <label className="form-label">Shared Expiration Policy for Batch</label>
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "12px" }}>
+                  {EXPIRATION_PRESETS.map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      className={selectedPreset.label === preset.label ? "btn btn-primary btn-sm" : "btn btn-secondary btn-sm"}
+                      onClick={() => setSelectedPreset(preset)}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "24px" }}>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={loading || parsedBatchUrls.length === 0}
+                  style={{ minWidth: 180 }}
+                >
+                  {loading ? "Processing Batch..." : `Batch Shorten (${parsedBatchUrls.length} URLs)`}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
+
+      {/* QR Modal */}
+      <QrCodeModal
+        isOpen={Boolean(qrModalUrl)}
+        onClose={() => setQrModalUrl(null)}
+        shortUrl={qrModalUrl}
+      />
     </div>
   );
 }

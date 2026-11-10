@@ -1,8 +1,8 @@
 const router = require("express").Router();
-const { createUrl, listUrls, getUrl, updateUrl, deleteUrl } = require("../controllers/url.controller");
+const { createUrl, bulkCreateUrls, listUrls, getUrl, updateUrl, deleteUrl } = require("../controllers/url.controller");
 const analytics = require("../controllers/analytics.controller");
 const { analyticsQuery, eventsQuery } = require("../validators/analytics.validator");
-const { createUrlBody, updateUrlBody, listUrlsQuery } = require("../validators/url.validator");
+const { createUrlBody, updateUrlBody, listUrlsQuery, bulkCreateUrlBody } = require("../validators/url.validator");
 const { idParams } = require("../validators/common");
 const validate = require("../middleware/validate");
 const authenticate = require("../middleware/authenticate");
@@ -13,6 +13,7 @@ const { createLink, manageLinks, analytics: analyticsLimit } = require("../middl
 router.use(noStore);
 
 router.post("/", optionalAuthenticate, createLink, validate({ body: createUrlBody }), createUrl);
+router.post("/bulk", authenticate, createLink, validate({ body: bulkCreateUrlBody }), bulkCreateUrls);
 
 router.get("/", authenticate, manageLinks, validate({ query: listUrlsQuery }), listUrls);
 router.get("/:id", authenticate, manageLinks, validate({ params: idParams }), getUrl);

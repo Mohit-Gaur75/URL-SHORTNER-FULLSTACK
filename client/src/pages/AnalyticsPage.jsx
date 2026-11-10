@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { listUrls, getUrlSummary, getUrlTimeseries, getUrlEvents } from "../api/urls";
+import { useToast } from "../context/ToastContext";
+import { downloadCsv, downloadJson } from "../utils/exportCsv";
 
 export default function AnalyticsPage() {
+  const { showSuccess, showError } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedLinkId = searchParams.get("linkId");
 
@@ -85,6 +88,40 @@ export default function AnalyticsPage() {
     }
   };
 
+  const handleExportEventsCsv = () => {
+    if (!events || events.length === 0) {
+      showError("No click events to export for this link");
+      return;
+    }
+    const headers = ["Event ID", "Timestamp", "Device", "Browser", "Operating System", "Referrer"];
+    const rows = events.map((e) => [
+      e.id,
+      new Date(e.clickedAt).toISOString(),
+      e.device || "Unknown",
+      e.browser || "Unknown",
+      e.os || "Unknown",
+      e.referrer || "Direct",
+    ]);
+    downloadCsv(`analytics-events-${activeLink?.shortCode || "link"}-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+    showSuccess("Click events exported to CSV!");
+  };
+
+  const handleExportSummaryJson = () => {
+    if (!summary) {
+      showError("No summary telemetry to export");
+      return;
+    }
+    const exportData = {
+      link: activeLink,
+      summary,
+      timeseries,
+      events,
+      exportedAt: new Date().toISOString(),
+    };
+    downloadJson(`analytics-report-${activeLink?.shortCode || "link"}.json`, exportData);
+    showSuccess("Telemetry report exported to JSON!");
+  };
+
   const maxBucketClicks = timeseries?.points?.length
     ? Math.max(...timeseries.points.map((p) => p.clicks), 1)
     : 1;
@@ -100,25 +137,46 @@ export default function AnalyticsPage() {
           </p>
         </div>
 
-        {/* Link Switcher */}
+        {/* Link Switcher & Export buttons */}
         {links.length > 0 && (
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <label htmlFor="link-selector" style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-              Analyzing Link:
-            </label>
-            <select
-              id="link-selector"
-              className="select-styled"
-              value={activeLink?.id || ""}
-              onChange={(e) => handleSelectLink(e.target.value)}
-              style={{ minWidth: 200 }}
-            >
-              {links.map((link) => (
-                <option key={link.id} value={link.id}>
-                  /{link.shortCode} ({link.clicks || 0} clicks)
-                </option>
-              ))}
-            </select>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <label htmlFor="link-selector" style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                Link:
+              </label>
+              <select
+                id="link-selector"
+                className="select-styled"
+                value={activeLink?.id || ""}
+                onChange={(e) => handleSelectLink(e.target.value)}
+                style={{ minWidth: 180 }}
+              >
+                {links.map((link) => (
+                  <option key={link.id} value={link.id}>
+                    /{link.shortCode} ({link.clicks || 0} clicks)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ display: "flex", gap: "6px" }}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={handleExportEventsCsv}
+                title="Download recent click events as CSV"
+              >
+                Export CSV
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={handleExportSummaryJson}
+                title="Download full telemetry report as JSON"
+              >
+                Export JSON
+              </button>
+            </div>
           </div>
         )}
       </div>

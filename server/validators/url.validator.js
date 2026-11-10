@@ -101,4 +101,23 @@ const listUrlsQuery = paginationQuery.extend({
     .transform((value) => value || undefined), // "" means no search
 });
 
-module.exports = { createUrlBody, updateUrlBody, listUrlsQuery };
+const bulkCreateUrlBody = z.strictObject(
+  {
+    urls: z
+      .array(
+        z.strictObject(
+          {
+            originalUrl,
+            customCode: customCode.optional(),
+            expiresAt: expiresAt.optional(),
+          },
+          { error: bodyTypeError }
+        )
+      )
+      .min(1, "Provide at least one URL")
+      .max(50, "You can shorten at most 50 URLs in one batch"),
+  },
+  { error: bodyTypeError }
+);
+
+module.exports = { createUrlBody, updateUrlBody, listUrlsQuery, bulkCreateUrlBody };

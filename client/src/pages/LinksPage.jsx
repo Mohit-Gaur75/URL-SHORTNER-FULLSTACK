@@ -4,6 +4,7 @@ import { useLinks } from "../hooks/useLinks";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { deleteUrl, updateUrl } from "../api/urls";
 import { useToast } from "../context/ToastContext";
+import { downloadCsv } from "../utils/exportCsv";
 import LinksTable from "../components/LinksTable";
 import Pagination from "../components/Pagination";
 import EditLinkDialog from "../components/EditLinkDialog";
@@ -155,6 +156,35 @@ export default function LinksPage() {
     updateQuery({ search: "", status: "all" });
   };
 
+  const handleExportCsv = () => {
+    if (!data?.items || data.items.length === 0) {
+      showError("No links to export");
+      return;
+    }
+    const headers = [
+      "Short Code",
+      "Short URL",
+      "Destination URL",
+      "Clicks",
+      "Status",
+      "Is Custom Alias",
+      "Created At",
+      "Expires At",
+    ];
+    const rows = data.items.map((l) => [
+      l.shortCode,
+      l.shortUrl,
+      l.originalUrl,
+      l.clicks,
+      l.status,
+      l.isCustomAlias ? "Yes" : "No",
+      l.createdAt ? new Date(l.createdAt).toISOString() : "—",
+      l.expiresAt ? new Date(l.expiresAt).toISOString() : "Never",
+    ]);
+    downloadCsv(`shortlink-links-page-${query.page}-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+    showSuccess("Links exported to CSV!");
+  };
+
   const filtering = query.status !== "all" || query.search !== "";
   const pagination = data?.pagination;
   const first = pagination ? (pagination.page - 1) * pagination.limit + 1 : 0;
@@ -197,7 +227,7 @@ export default function LinksPage() {
             />
           </div>
 
-          <div className="toolbar-controls">
+          <div className="toolbar-controls" style={{ display: "flex", gap: "8px" }}>
             <select
               className="select-styled"
               aria-label="Sort links"
@@ -210,6 +240,21 @@ export default function LinksPage() {
                 </option>
               ))}
             </select>
+
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={handleExportCsv}
+              title="Download CSV report of current links"
+              style={{ gap: "6px" }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              <span>Export CSV</span>
+            </button>
           </div>
         </div>
 

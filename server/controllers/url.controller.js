@@ -32,6 +32,23 @@ exports.createUrl = async (req, res) => {
   res.status(created ? 201 : 200).json(toUrlResponse(url));
 };
 
+exports.bulkCreateUrls = async (req, res) => {
+  const { urls } = req.validated.body;
+  const results = await urlService.bulkCreateShortUrls({
+    items: urls,
+    userId: req.user?._id ?? null,
+  });
+  res.status(201).json({
+    items: results.map((r) =>
+      r.success
+        ? { success: true, ...toUrlResponse(r.url), created: r.created }
+        : { success: false, originalUrl: r.originalUrl, error: r.error }
+    ),
+    total: results.length,
+    successful: results.filter((r) => r.success).length,
+  });
+};
+
 exports.listUrls = async (req, res) => {
   const { items, page, limit, total, totalPages } = await urlService.listUrlsFor(req.user, req.validated.query);
   res.json({

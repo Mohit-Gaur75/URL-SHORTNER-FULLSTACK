@@ -9,6 +9,11 @@ export const createUrl = async ({ originalUrl, customCode, expiresAt }) => {
   return data;
 };
 
+export const bulkCreateUrls = async (urls) => {
+  const { data } = await http.post("/urls/bulk", { urls });
+  return data;
+};
+
 export const getUrl = async (id) => {
   const { data } = await http.get(`/urls/${id}`);
   return data;

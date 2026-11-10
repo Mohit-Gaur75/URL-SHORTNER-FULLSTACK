@@ -11,7 +11,7 @@ const assert = require("node:assert/strict");
 
 const Url = require("../models/url.model");
 const codes = require("../utils/shortCode");
-const { createShortUrl } = require("../services/url.service");
+const { createShortUrl, bulkCreateShortUrls } = require("../services/url.service");
 const { AppError, ConflictError } = require("../utils/errors");
 
 const duplicateKey = (field = "shortCode") =>
@@ -126,3 +126,24 @@ for (const [label, existing, request] of [
     await assert.rejects(claimAlias(t, existing, request), (err) => err.code === "SHORT_CODE_TAKEN");
   });
 }
+
+test("bulkCreateShortUrls: creates multiple links in batch and handles individual failures cleanly", async (t) => {
+  t.mock.method(Url, "create", async (doc) => {
+    if (doc.originalUrl.includes("fail")) throw new Error("Database write failed");
+    return { ...doc, _id: "doc123" };
+  });
+
+  const batch = [
+    { originalUrl: "https://example.com/1" },
+    { originalUrl: "https://example.com/fail" },
+    { originalUrl: "https://example.com/2" },
+  ];
+
+  const results = await bulkCreateShortUrls({ items: batch, userId: OWNER });
+  assert.equal(results.length, 3);
+  assert.equal(results[0].success, true);
+  assert.equal(results[0].created, true);
+  assert.equal(results[1].success, false);
+  assert.equal(results[1].error, "Database write failed");
+  assert.equal(results[2].success, true);
+});
