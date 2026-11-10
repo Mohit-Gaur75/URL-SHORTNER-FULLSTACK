@@ -1,0 +1,162 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --------------------------------------------------------------------------
+  # 1. Backend Continuous Integration: Tests & Security Audit
+  # --------------------------------------------------------------------------
+  backend-ci:
+    name: Backend CI (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20.x, 22.x]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install Server Dependencies
+        working-directory: server
+        run: npm ci
+
+      - name: Dependency Security Audit
+        working-directory: server
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      - name: Run Backend Test Suite (130 Tests)
+        working-directory: server
+        env:
+          NODE_ENV: test
+          PORT: 5000
+          MONGO_URI: mongodb://127.0.0.1:1/test
+          JWT_SECRET: production_grade_secret_jwt_key_that_is_at_least_32_characters_long
+          BASE_URL: http://localhost:5000
+        run: npm test
+
+  # --------------------------------------------------------------------------
+  # 2. Frontend Continuous Integration: Linting & Production Build
+  # --------------------------------------------------------------------------
+  frontend-ci:
+    name: Frontend CI (Lint & Build)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: "npm"
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install Client Dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Static Code Analysis (Oxlint)
+        working-directory: client
+        run: npm run lint
+
+      - name: Compile Production Single Page Application
+        working-directory: client
+        env:
+          VITE_API_URL: http://localhost:5000
+        run: npm run build
+
+  # --------------------------------------------------------------------------
+  # 3. Container Verification: Multi-Stage Build & Compose Smoke Test
+  # --------------------------------------------------------------------------
+  docker-ci:
+    name: Docker Build & Compose Integration Test
+    runs-on: ubuntu-latest
+    needs: [backend-ci, frontend-ci]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate Docker Compose Configuration
+        run: docker compose config
+
+      - name: Build and Start Multi-Container Stack
+        run: docker compose up --build -d
+
+      - name: Await Service Health (Max 60s)
+        run: |
+          echo "Waiting for services to become healthy..."
+          for i in {1..30}; do
+            STATUS=$(docker inspect --format='{{json .State.Health.Status}}' url-shortener-api 2>/dev/null || echo '"starting"')
+            if [ "$STATUS" == '"healthy"' ]; then
+              echo "✅ url-shortener-api is healthy!"
+              break
+            fi
+            echo "Attempt $i: API status is $STATUS. Waiting 2s..."
+            sleep 2
+          done
+
+      - name: Execute End-to-End Live Container Smoke Test
+        run: |
+          echo "Testing live container health probe..."
+          curl -fail -i http://localhost:5000/api/health/live
+
+          echo "Testing live readiness probe..."
+          curl -fail -i http://localhost:5000/api/health/ready
+
+          echo "Testing full diagnostic health..."
+          curl -fail -s http://localhost:5000/api/health
+
+          echo "Testing public link creation..."
+          CREATE_RESP=$(curl -fail -s -X POST http://localhost:5000/api/urls \
+            -H "Content-Type: application/json" \
+            -d '{"originalUrl": "https://example.com/ci-smoke-target", "customCode": "ci-smoke"}')
+          echo "Link created: $CREATE_RESP"
+
+          echo "Testing public 302 redirect resolution..."
+          REDIRECT_RESP=$(curl -s -o /dev/null -w "%{http_code} %{redirect_url}" http://localhost:5000/ci-smoke)
+          echo "Redirect response: $REDIRECT_RESP"
+          if [[ "$REDIRECT_RESP" != *"302 https://example.com/ci-smoke-target"* ]]; then
+            echo "❌ Redirect test failed! Received: $REDIRECT_RESP"
+            exit 1
+          fi
+          echo "✅ Redirect test succeeded!"
+
+      - name: Output Container Logs on Failure
+        if: failure()
+        run: |
+          echo "=== API LOGS ==="
+          docker logs url-shortener-api --tail 100
+          echo "=== WORKER LOGS ==="
+          docker logs url-shortener-worker --tail 100
+          echo "=== MONGO LOGS ==="
+          docker logs url-shortener-mongo --tail 50
+          echo "=== REDIS LOGS ==="
+          docker logs url-shortener-redis --tail 50
+
+      - name: Teardown Compose Environment
+        if: always()
+        run: docker compose down -v
