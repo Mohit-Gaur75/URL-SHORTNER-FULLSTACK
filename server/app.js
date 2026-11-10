@@ -62,20 +62,22 @@ app.use(
   })
 );
 
-// 4. Global Anti-Flooding Rate Limiter
+// 4. Health Check Routes (Mounted BEFORE rate limiting so health probes are never throttled)
+app.use("/api/health", require("./routes/health.routes"));
+
+// 5. Global Anti-Flooding Rate Limiter
 app.use("/api", globalFlood);
 
-// 5. Body Parsing with strict payload size limit (prevents memory exhaustion)
+// 6. Body Parsing with strict payload size limit (prevents memory exhaustion)
 app.use(express.json({ limit: "10kb" }));
 
-// 6. Defense-in-depth: NoSQL injection & prototype pollution sanitization
+// 7. Defense-in-depth: NoSQL injection & prototype pollution sanitization
 app.use(sanitize);
 
-// 7. HTTP Parameter Pollution (HPP) defense
+// 8. HTTP Parameter Pollution (HPP) defense
 app.use(preventHpp);
 
 // API Endpoints
-app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 app.use("/api/auth", require("./routes/auth.routes"));
 app.use("/api/urls", require("./routes/url.routes"));
 app.use("/api/admin", require("./routes/admin.routes"));
