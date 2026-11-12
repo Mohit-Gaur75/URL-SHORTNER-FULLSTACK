@@ -11,6 +11,7 @@ import AnalyticsPage from "./pages/AnalyticsPage";
 import SystemStatusPage from "./pages/SystemStatusPage";
 import SettingsPage from "./pages/SettingsPage";
 import AdminPage from "./pages/AdminPage";
+import RedirectBridge from "./pages/RedirectBridge";
 import NotFound from "./pages/NotFound";
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -83,6 +84,9 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
+          {/* Short Link Redirect Bridge */}
+          <Route path="/:code" element={<RedirectBridge />} />
 
           {/* Unmatched / 404 */}
           <Route path="*" element={<NotFound />} />

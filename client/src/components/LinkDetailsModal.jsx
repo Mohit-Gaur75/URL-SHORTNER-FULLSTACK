@@ -1,9 +1,11 @@
+import { Link } from "react-router-dom";
 import Modal from "./Modal";
 import CopyButton from "./CopyButton";
 
 export default function LinkDetailsModal({
   link,
   isOpen,
+  open,
   onClose,
   onOpenQr,
   onOpenEdit,
@@ -12,8 +14,9 @@ export default function LinkDetailsModal({
 }) {
   if (!link) return null;
 
+  const isModalOpen = Boolean(isOpen ?? open);
   const origin = window.location.origin;
-  const shortUrl = `${origin}/${link.shortCode}`;
+  const shortUrl = link.shortUrl || `${origin}/${link.shortCode}`;
 
   const isExpired = Boolean(link.isExpired);
   const statusLabel = isExpired
@@ -44,7 +47,7 @@ export default function LinkDetailsModal({
     : "Never expires";
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Link Telemetry & Analytics">
+    <Modal open={isModalOpen} onClose={onClose} title="Link Telemetry & Analytics">
       <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
         {/* Top summary card */}
         <div
@@ -82,6 +85,18 @@ export default function LinkDetailsModal({
                 onOpenQr(shortUrl);
               }}
               title="View QR Code"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                background: "var(--bg-surface-raised)",
+                border: "1px solid var(--border-muted)",
+                color: "var(--text-primary)",
+                padding: "6px 12px",
+                borderRadius: "var(--radius-md)",
+                fontSize: "0.85rem",
+                cursor: "pointer",
+              }}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <rect x="3" y="3" width="7" height="7" />
@@ -138,13 +153,15 @@ export default function LinkDetailsModal({
               gap: "10px",
             }}
           >
-            <span>{link.originalUrl}</span>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {link.originalUrl}
+            </span>
             <a
               href={link.originalUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="btn btn-ghost"
-              style={{ padding: "4px 8px", fontSize: "0.75rem", flexShrink: 0 }}
+              className="btn btn-secondary btn-sm"
+              style={{ padding: "4px 10px", fontSize: "0.75rem", flexShrink: 0 }}
             >
               Open ↗
             </a>
@@ -163,6 +180,40 @@ export default function LinkDetailsModal({
           </div>
         </div>
 
+        {/* Full Analytics Deep-Dive Banner */}
+        <div
+          style={{
+            background: "rgba(59, 130, 246, 0.08)",
+            border: "1px solid rgba(59, 130, 246, 0.25)",
+            borderRadius: "var(--radius-md)",
+            padding: "12px 16px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: "10px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="20" x2="18" y2="10" />
+              <line x1="12" y1="20" x2="12" y2="4" />
+              <line x1="6" y1="20" x2="6" y2="14" />
+            </svg>
+            <span style={{ fontSize: "0.875rem", color: "var(--text-primary)", fontWeight: 500 }}>
+              Device, browser, OS &amp; timeseries charts available
+            </span>
+          </div>
+          <Link
+            to={`/analytics?linkId=${link.id}`}
+            onClick={onClose}
+            className="btn btn-primary btn-sm"
+            style={{ fontSize: "0.8rem", padding: "5px 12px" }}
+          >
+            Open Analytics Hub &rarr;
+          </Link>
+        </div>
+
         {/* Modal Action Footer */}
         <div
           style={{
@@ -171,15 +222,14 @@ export default function LinkDetailsModal({
             alignItems: "center",
             borderTop: "1px solid var(--border-subtle)",
             paddingTop: "16px",
-            marginTop: "8px",
+            marginTop: "4px",
             flexWrap: "wrap",
             gap: "10px",
           }}
         >
           <button
             type="button"
-            className="btn btn-danger"
-            style={{ padding: "8px 14px", fontSize: "0.85rem" }}
+            className="btn btn-danger btn-sm"
             onClick={() => {
               onClose();
               onOpenDelete(link);
@@ -191,8 +241,7 @@ export default function LinkDetailsModal({
           <div style={{ display: "flex", gap: "8px" }}>
             <button
               type="button"
-              className="btn btn-secondary"
-              style={{ padding: "8px 14px", fontSize: "0.85rem" }}
+              className="btn btn-secondary btn-sm"
               onClick={() => {
                 onToggleStatus(link);
                 onClose();
@@ -202,8 +251,7 @@ export default function LinkDetailsModal({
             </button>
             <button
               type="button"
-              className="btn btn-primary"
-              style={{ padding: "8px 16px", fontSize: "0.85rem" }}
+              className="btn btn-primary btn-sm"
               onClick={() => {
                 onClose();
                 onOpenEdit(link);

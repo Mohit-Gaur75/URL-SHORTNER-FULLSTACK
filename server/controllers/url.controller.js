@@ -75,7 +75,12 @@ exports.deleteUrl = async (req, res) => {
 exports.redirectUrl = async (req, res) => {
   // A HEAD request asks "what would a GET do?". It must not count as a visit.
   const countClick = req.method !== "HEAD";
-  const destination = await urlService.resolveShortCode(req.params.code, { countClick });
+  const context = {
+    userAgent: req.get("user-agent") || "",
+    referrer: req.get("referrer") || req.get("referer") || "",
+    doNotTrack: req.get("dnt") === "1" || req.get("sec-gpc") === "1",
+  };
+  const destination = await urlService.resolveShortCode(req.params.code, { countClick, context });
 
   // 302 Found: a TEMPORARY redirect. Browsers don't remember it, so every visit
   // comes back through us (to be counted, and to notice expiry or edits).

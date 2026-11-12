@@ -473,7 +473,39 @@
   line-height: 1.5;
 }
 
-/* Modals */
+/* QR Preview Container */
+.qr-preview-box {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.45);
+  margin: 0 auto 16px auto;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.action-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-surface-raised);
+  border: 1px solid var(--border-muted);
+  color: var(--text-primary);
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.action-chip-btn:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-focus);
+}
 .modal {
   margin: auto;
   width: min(520px, calc(100vw - 32px));

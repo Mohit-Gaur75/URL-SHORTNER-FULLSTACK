@@ -1,14 +1,15 @@
 import { useEffect, useRef } from "react";
 
-export default function Modal({ open, title, onClose, children }) {
+export default function Modal({ open, isOpen, title, onClose, children }) {
+  const isModalOpen = Boolean(open ?? isOpen);
   const ref = useRef(null);
 
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
-  }, [open]);
+    if (isModalOpen && !dialog.open) dialog.showModal();
+    if (!isModalOpen && dialog.open) dialog.close();
+  }, [isModalOpen]);
 
   return (
     <dialog
@@ -18,7 +19,7 @@ export default function Modal({ open, title, onClose, children }) {
       onClose={onClose}
       onClick={(event) => event.target === ref.current && onClose()}
     >
-      {open && (
+      {isModalOpen && (
         <div className="modal-body">
           <div className="modal-header">
             <h2 id="modal-title" className="modal-title">
