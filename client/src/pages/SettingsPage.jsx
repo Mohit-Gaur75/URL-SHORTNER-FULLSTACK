@@ -1,9 +1,84 @@
+import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { updateProfile, changePassword, logoutEverywhere } from "../api/auth";
 
 export default function SettingsPage() {
-  const { user, logout } = useAuth();
-  const { showSuccess } = useToast();
+  const { user, logout, updateUser } = useAuth();
+  const { showSuccess, showError } = useToast();
+
+  // Profile Form state
+  const [name, setName] = useState(user?.name || "");
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  // Password Form state
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
+
+  // Logout everywhere state
+  const [revoking, setRevoking] = useState(false);
+
+  const handleUpdateProfile = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      showError("Name cannot be empty");
+      return;
+    }
+    setProfileSaving(true);
+    try {
+      const res = await updateProfile({ name: name.trim() });
+      updateUser(res.user);
+      showSuccess("Profile name updated successfully!");
+    } catch (err) {
+      showError(err.message || "Failed to update profile");
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    if (newPassword.length < 8) {
+      showError("New password must be at least 8 characters");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showError("New passwords do not match");
+      return;
+    }
+    setPasswordSaving(true);
+    try {
+      await changePassword({ currentPassword, newPassword });
+      showSuccess("Password changed successfully! Other sessions invalidated.");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err) {
+      showError(err.message || "Failed to change password");
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
+  const handleLogoutEverywhere = async () => {
+    if (!window.confirm("Are you sure you want to log out of all devices? You will be returned to the login screen.")) {
+      return;
+    }
+    setRevoking(true);
+    try {
+      await logoutEverywhere();
+      showSuccess("All active sessions revoked.");
+      logout();
+      window.location.href = "/login";
+    } catch (err) {
+      showError(err.message || "Failed to revoke sessions");
+      setRevoking(false);
+    }
+  };
 
   const handleCopyApiSnippet = () => {
     const snippet = `curl -X POST http://localhost:5000/api/urls \\
@@ -50,7 +125,7 @@ export default function SettingsPage() {
             {(user?.name || user?.email || "U").charAt(0).toUpperCase()}
           </div>
 
-          <div>
+          <div style={{ flex: 1 }}>
             <div style={{ fontSize: "1.2rem", fontWeight: 700, color: "var(--text-primary)" }}>
               {user?.name || "Anonymous User"}
             </div>
@@ -67,6 +142,127 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+
+        {/* Update Profile Form */}
+        <form onSubmit={handleUpdateProfile} style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "20px" }}>
+          <div className="form-group" style={{ maxWidth: 400, marginBottom: "16px" }}>
+            <label className="form-label" htmlFor="profile-name">
+              Display Name
+            </label>
+            <div style={{ display: "flex", gap: "10px" }}>
+              <input
+                id="profile-name"
+                type="text"
+                className="form-input"
+                value={name}
+                maxLength={50}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+              <button
+                type="submit"
+                className="btn btn-primary btn-sm"
+                disabled={profileSaving || name === user?.name}
+                style={{ flexShrink: 0 }}
+              >
+                {profileSaving ? "Saving..." : "Save Name"}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      {/* Change Password Card */}
+      <div className="dashboard-card" style={{ marginBottom: "24px" }}>
+        <h2 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "8px" }}>
+          Security &amp; Password
+        </h2>
+        <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "20px" }}>
+          Changing your password automatically increments your security token version, ending sessions on all other browsers.
+        </p>
+
+        <form onSubmit={handleChangePassword} style={{ maxWidth: 440 }}>
+          <div className="form-group">
+            <label className="form-label" htmlFor="current-pw">
+              Current Password
+            </label>
+            <div className="input-password-wrapper">
+              <input
+                id="current-pw"
+                type={showCurrent ? "text" : "password"}
+                className="form-input"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                className="password-toggle-btn"
+                onClick={() => setShowCurrent(!showCurrent)}
+                aria-label={showCurrent ? "Hide password" : "Show password"}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="new-pw">
+              New Password (min 8 chars)
+            </label>
+            <div className="input-password-wrapper">
+              <input
+                id="new-pw"
+                type={showNew ? "text" : "password"}
+                className="form-input"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+                minLength={8}
+                autoComplete="new-password"
+              />
+              <button
+                type="button"
+                className="password-toggle-btn"
+                onClick={() => setShowNew(!showNew)}
+                aria-label={showNew ? "Hide password" : "Show password"}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="confirm-pw">
+              Confirm New Password
+            </label>
+            <input
+              id="confirm-pw"
+              type="password"
+              className="form-input"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              minLength={8}
+              autoComplete="new-password"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="btn btn-primary btn-sm"
+            disabled={passwordSaving || !currentPassword || !newPassword}
+          >
+            {passwordSaving ? "Updating Password..." : "Update Password"}
+          </button>
+        </form>
       </div>
 
       {/* Security Engine Overview */}
@@ -148,24 +344,35 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Danger Zone */}
+      {/* Session Management & Danger Zone */}
       <div className="dashboard-card" style={{ border: "1px solid rgba(239, 68, 68, 0.3)" }}>
         <h2 style={{ fontSize: "1.1rem", fontWeight: 600, color: "var(--danger)", marginBottom: "8px" }}>
-          Session Termination
+          Session Management &amp; Termination
         </h2>
         <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "16px" }}>
-          Terminates your current browser session and revokes the active refresh token family.
+          Terminate active browser sessions or invalidate all device refresh tokens across your account.
         </p>
-        <button
-          type="button"
-          className="btn btn-danger btn-sm"
-          onClick={() => {
-            logout();
-            window.location.href = "/";
-          }}
-        >
-          Sign Out of Account
-        </button>
+
+        <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={handleLogoutEverywhere}
+            disabled={revoking}
+          >
+            {revoking ? "Revoking..." : "Log Out of All Devices"}
+          </button>
+          <button
+            type="button"
+            className="btn btn-danger btn-sm"
+            onClick={() => {
+              logout();
+              window.location.href = "/";
+            }}
+          >
+            Sign Out (This Device)
+          </button>
+        </div>
       </div>
     </div>
   );

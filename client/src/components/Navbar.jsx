@@ -68,11 +68,36 @@ export default function Navbar() {
               >
                 Settings
               </NavLink>
+              {user?.role === "ADMIN" && (
+                <NavLink
+                  to="/admin"
+                  className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+                >
+                  Admin
+                  <span
+                    style={{
+                      fontSize: "0.65rem",
+                      padding: "1px 5px",
+                      background: "rgba(168, 85, 247, 0.25)",
+                      color: "#c084fc",
+                      borderRadius: "4px",
+                      fontWeight: 700,
+                      letterSpacing: "0.03em",
+                    }}
+                  >
+                    PRO
+                  </span>
+                </NavLink>
+              )}
             </div>
 
             <div className="nav-user">
               <Link to="/settings" className="user-badge" title={user.email} style={{ textDecoration: "none" }}>
-                <div className="user-avatar">
+                <div
+                  className="user-avatar"
+                  style={user?.role === "ADMIN" ? { background: "linear-gradient(135deg, #a855f7 0%, #ec4899 100%)", color: "#fff" } : undefined}
+                >
                   {getInitials(user.name, user.email)}
                 </div>
                 <span>{user.name || user.email}</span>

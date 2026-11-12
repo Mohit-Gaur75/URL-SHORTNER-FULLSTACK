@@ -10,6 +10,7 @@ import CreateLinkPage from "./pages/CreateLinkPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import SystemStatusPage from "./pages/SystemStatusPage";
 import SettingsPage from "./pages/SettingsPage";
+import AdminPage from "./pages/AdminPage";
 import NotFound from "./pages/NotFound";
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -71,6 +72,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute>
+                <AdminPage />
               </ProtectedRoute>
             }
           />

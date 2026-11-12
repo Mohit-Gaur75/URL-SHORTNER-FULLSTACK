@@ -1,7 +1,7 @@
 const router = require("express").Router();
 const cookieParser = require("cookie-parser");
 const controller = require("../controllers/auth.controller");
-const { registerBody, loginBody } = require("../validators/auth.validator");
+const { registerBody, loginBody, updateProfileBody, changePasswordBody } = require("../validators/auth.validator");
 const validate = require("../middleware/validate");
 const authenticate = require("../middleware/authenticate");
 const noStore = require("../middleware/noStore");
@@ -20,5 +20,7 @@ router.post("/refresh", limits.refresh, requireCsrfHeader, controller.refresh);
 router.post("/logout", limits.refresh, requireCsrfHeader, controller.logout);
 router.post("/logout-all", authenticate, requireCsrfHeader, controller.logoutEverywhere);
 router.get("/me", authenticate, controller.getMe);
+router.patch("/profile", authenticate, validate({ body: updateProfileBody }), controller.updateProfile);
+router.post("/change-password", authenticate, requireCsrfHeader, validate({ body: changePasswordBody }), controller.changePassword);
 
 module.exports = router;

@@ -51,4 +51,17 @@ const loginBody = z.strictObject(
   { error: bodyTypeError }
 );
 
-module.exports = { registerBody, loginBody };
+const updateProfileBody = z.strictObject(
+  { name },
+  { error: bodyTypeError }
+);
+
+const changePasswordBody = z.strictObject(
+  {
+    currentPassword: z.string({ error: "Current password is required" }).min(1, "Current password is required"),
+    newPassword: registerPassword,
+  },
+  { error: bodyTypeError }
+);
+
+module.exports = { registerBody, loginBody, updateProfileBody, changePasswordBody };

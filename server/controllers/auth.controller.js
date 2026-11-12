@@ -49,3 +49,18 @@ exports.logoutEverywhere = async (req, res) => {
 exports.getMe = async (req, res) => {
   res.json({ user: authService.toPublicUser(req.user) }); // req.user set by authenticate
 };
+
+exports.updateProfile = async (req, res) => {
+  const { name } = req.validated.body;
+  const user = await authService.updateProfile(req.user._id, { name });
+  res.json({ user });
+};
+
+exports.changePassword = async (req, res) => {
+  const { currentPassword, newPassword } = req.validated.body;
+  const { user, session } = await authService.changePassword(req.user._id, {
+    currentPassword,
+    newPassword,
+  });
+  sendSession(res, 200, { user, session });
+};

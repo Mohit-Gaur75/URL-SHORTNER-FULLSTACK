@@ -8,6 +8,7 @@ const toPublicUser = (user) => ({
   id: user._id,
   name: user.name,
   email: user.email,
+  role: user.role || "USER",
 });
 
 async function register({ name, email, password: plainPassword }) {
@@ -67,4 +68,38 @@ async function authenticateToken(token) {
   return user;
 }
 
-module.exports = { register, login, refresh, logout, logoutEverywhere, authenticateToken, toPublicUser };
+async function updateProfile(userId, { name }) {
+  const user = await User.findByIdAndUpdate(userId, { name }, { new: true });
+  if (!user) throw new AuthenticationError("User not found");
+  return toPublicUser(user);
+}
+
+async function changePassword(userId, { currentPassword, newPassword }) {
+  const user = await User.findById(userId).select("+password");
+  if (!user) throw new AuthenticationError("User not found");
+
+  const matches = await password.verifyPassword(currentPassword, user.password);
+  if (!matches) {
+    throw new AuthenticationError("Current password is incorrect", "INVALID_CREDENTIALS");
+  }
+
+  user.password = newPassword;
+  user.tokenVersion = (user.tokenVersion || 0) + 1;
+  await user.save();
+
+  await sessions.endAllSessions(userId);
+  const session = await sessions.startSession(user);
+  return { user: toPublicUser(user), session };
+}
+
+module.exports = {
+  register,
+  login,
+  refresh,
+  logout,
+  logoutEverywhere,
+  updateProfile,
+  changePassword,
+  authenticateToken,
+  toPublicUser,
+};
