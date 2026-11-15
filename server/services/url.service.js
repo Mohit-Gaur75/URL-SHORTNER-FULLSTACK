@@ -51,6 +51,9 @@ async function createShortUrl({
   maxClicks = null,
   expiredRedirectUrl = null,
   password = null,
+  metaTitle = null,
+  metaDescription = null,
+  metaImage = null,
   userId = null,
 }) {
   const isCustom = Boolean(customCode);
@@ -71,6 +74,9 @@ async function createShortUrl({
         expiredRedirectUrl: expiredRedirectUrl ?? null,
         isPasswordProtected,
         passwordHash,
+        metaTitle: metaTitle ?? null,
+        metaDescription: metaDescription ?? null,
+        metaImage: metaImage ?? null,
       });
       return { url, created: true };
     } catch (err) {
@@ -195,7 +201,18 @@ function readLiveLinkOnce(code) {
   if (!pending) {
     const query = Url.findOne(
       liveLinkFilter(code, new Date()),
-      { originalUrl: 1, expiresAt: 1, _id: 1, maxClicks: 1, clicks: 1, isPasswordProtected: 1, passwordHash: 1 },
+      {
+        originalUrl: 1,
+        expiresAt: 1,
+        _id: 1,
+        maxClicks: 1,
+        clicks: 1,
+        isPasswordProtected: 1,
+        passwordHash: 1,
+        metaTitle: 1,
+        metaDescription: 1,
+        metaImage: 1,
+      },
       { lean: true }
     );
     pending = Promise.resolve(typeof query?.exec === "function" ? query.exec() : query)
@@ -237,6 +254,11 @@ async function resolveShortCode(code, { countClick = true, context = null } = {}
       } else {
         throw new AppError(403, "PASSWORD_REQUIRED", "This link is password-protected");
       }
+    }
+    if (context?.meta) {
+      context.meta.title = link.metaTitle;
+      context.meta.description = link.metaDescription;
+      context.meta.image = link.metaImage;
     }
     if (link.maxClicks == null && !link.isPasswordProtected) {
       linkCache.set(code, link.originalUrl, link.expiresAt, link._id); // non-blocking cache write
@@ -294,7 +316,18 @@ async function getUrlFor(actor, id) {
   return url;
 }
 
-const EDITABLE_FIELDS = ["originalUrl", "status", "expiresAt", "isArchived", "tags", "maxClicks", "expiredRedirectUrl"];
+const EDITABLE_FIELDS = [
+  "originalUrl",
+  "status",
+  "expiresAt",
+  "isArchived",
+  "tags",
+  "maxClicks",
+  "expiredRedirectUrl",
+  "metaTitle",
+  "metaDescription",
+  "metaImage",
+];
 
 async function updateUrlFor(actor, id, changes) {
   const $set = {};

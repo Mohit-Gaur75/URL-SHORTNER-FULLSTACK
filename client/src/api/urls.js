@@ -8,6 +8,9 @@ export const createUrl = async ({
   maxClicks,
   expiredRedirectUrl,
   password,
+  metaTitle,
+  metaDescription,
+  metaImage,
 }) => {
   const { data } = await http.post("/urls", {
     originalUrl,
@@ -17,6 +20,9 @@ export const createUrl = async ({
     maxClicks: maxClicks != null && maxClicks !== "" ? Number(maxClicks) : undefined,
     expiredRedirectUrl: expiredRedirectUrl || undefined,
     password: password || undefined,
+    metaTitle: metaTitle || undefined,
+    metaDescription: metaDescription || undefined,
+    metaImage: metaImage || undefined,
   });
   return data;
 };

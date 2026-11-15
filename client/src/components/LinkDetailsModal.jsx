@@ -246,6 +246,42 @@ export default function LinkDetailsModal({
           </div>
         )}
 
+        {/* Social Card / OpenGraph Preview */}
+        {(link.metaTitle || link.metaDescription || link.metaImage) && (
+          <div>
+            <label style={{ display: "block", fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "6px" }}>
+              Social Card Embed Preview (OpenGraph)
+            </label>
+            <div
+              style={{
+                borderRadius: "8px",
+                border: "1px solid var(--border-subtle)",
+                overflow: "hidden",
+                background: "var(--surface)",
+              }}
+            >
+              {link.metaImage && (
+                <img
+                  src={link.metaImage}
+                  alt="OpenGraph thumbnail"
+                  style={{ width: "100%", height: 140, objectFit: "cover", display: "block" }}
+                  onError={(e) => { e.target.style.display = "none"; }}
+                />
+              )}
+              <div style={{ padding: "10px 14px" }}>
+                <div style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--text-primary)", marginBottom: "3px" }}>
+                  {link.metaTitle || link.originalUrl}
+                </div>
+                {link.metaDescription && (
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", lineHeight: 1.4 }}>
+                    {link.metaDescription}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Timestamps */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", fontSize: "0.85rem" }}>
           <div>

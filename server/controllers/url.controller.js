@@ -17,6 +17,9 @@ const toUrlResponse = (url) => {
     tags: url.tags || [],
     maxClicks: url.maxClicks ?? null,
     expiredRedirectUrl: url.expiredRedirectUrl ?? null,
+    metaTitle: url.metaTitle ?? null,
+    metaDescription: url.metaDescription ?? null,
+    metaImage: url.metaImage ?? null,
     clicks: url.clicks,
     lastClickedAt: url.lastClickedAt,
     expiresAt: url.expiresAt,
@@ -29,7 +32,7 @@ const toUrlResponse = (url) => {
 exports.toUrlResponse = toUrlResponse;
 
 exports.createUrl = async (req, res) => {
-  const { originalUrl, customCode, expiresAt, tags, maxClicks, expiredRedirectUrl, password } = req.validated.body;
+  const { originalUrl, customCode, expiresAt, tags, maxClicks, expiredRedirectUrl, password, metaTitle, metaDescription, metaImage } = req.validated.body;
 
   const existingDuplicate = req.user
     ? await urlService.findExistingByOriginalUrl({ originalUrl, userId: req.user._id })
@@ -43,6 +46,9 @@ exports.createUrl = async (req, res) => {
     maxClicks,
     expiredRedirectUrl,
     password,
+    metaTitle,
+    metaDescription,
+    metaImage,
     userId: req.user?._id ?? null,
   });
 
@@ -159,9 +165,22 @@ exports.restoreUrl = async (req, res) => {
   res.json(toUrlResponse(url));
 };
 
+const CRAWLER_REGEX = /facebookexternalhit|twitterbot|linkedinbot|slackbot|whatsapp|telegrambot|discordbot|applebot|bingbot|googlebot/i;
+
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 exports.redirectUrl = async (req, res) => {
   // A HEAD request asks "what would a GET do?". It must not count as a visit.
   const countClick = req.method !== "HEAD";
+  const userAgent = req.get("user-agent") || "";
   const countryHeader =
     req.get("cf-ipcountry") ||
     req.get("x-country-code") ||
@@ -169,16 +188,49 @@ exports.redirectUrl = async (req, res) => {
     "Unknown";
   const ip = req.ip || req.get("x-forwarded-for") || req.connection?.remoteAddress || "";
   const password = req.query.pwd || req.get("x-link-password") || null;
+  const meta = {};
 
   const context = {
-    userAgent: req.get("user-agent") || "",
+    userAgent,
     referrer: req.get("referrer") || req.get("referer") || "",
     country: countryHeader,
     ip,
     password,
     doNotTrack: req.get("dnt") === "1" || req.get("sec-gpc") === "1",
+    meta,
   };
   const destination = await urlService.resolveShortCode(req.params.code, { countClick, context });
+
+  // If a social media crawler/bot requests the URL and custom OpenGraph metadata is configured:
+  const isCrawler = CRAWLER_REGEX.test(userAgent);
+  if (isCrawler && (meta.title || meta.description || meta.image)) {
+    const title = meta.title || destination;
+    const desc = meta.description || "";
+    const image = meta.image || "";
+    const shortUrl = `${env.baseUrl}/${req.params.code}`;
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    return res.status(200).send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(title)}</title>
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="${escapeHtml(title)}">
+  ${desc ? `<meta property="og:description" content="${escapeHtml(desc)}">` : ""}
+  ${image ? `<meta property="og:image" content="${escapeHtml(image)}">` : ""}
+  <meta property="og:url" content="${escapeHtml(shortUrl)}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${escapeHtml(title)}">
+  ${desc ? `<meta name="twitter:description" content="${escapeHtml(desc)}">` : ""}
+  ${image ? `<meta name="twitter:image" content="${escapeHtml(image)}">` : ""}
+  <meta http-equiv="refresh" content="0;url=${escapeHtml(destination)}">
+</head>
+<body>
+  <p>Redirecting to <a href="${escapeHtml(destination)}">${escapeHtml(destination)}</a>...</p>
+</body>
+</html>`);
+  }
 
   // 302 Found: a TEMPORARY redirect. Browsers don't remember it, so every visit
   // comes back through us (to be counted, and to notice expiry or edits).

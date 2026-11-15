@@ -44,6 +44,27 @@ const urlSchema = new mongoose.Schema(
       default: null,
     },
 
+    metaTitle: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 120,
+    },
+
+    metaDescription: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 300,
+    },
+
+    metaImage: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 2048,
+    },
+
     clicks: { type: Number, default: 0, min: 0 },
     lastClickedAt: { type: Date, default: null },
 

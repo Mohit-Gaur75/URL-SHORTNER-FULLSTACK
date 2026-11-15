@@ -15,6 +15,9 @@ function EditForm({ link, onSave, onCancel }) {
   const initialFallback = link.expiredRedirectUrl || "";
   const initialArchived = Boolean(link.isArchived);
   const initialPasswordProtected = Boolean(link.isPasswordProtected);
+  const initialMetaTitle = link.metaTitle || "";
+  const initialMetaDescription = link.metaDescription || "";
+  const initialMetaImage = link.metaImage || "";
 
   const [originalUrl, setOriginalUrl] = useState(link.originalUrl);
   const [expiry, setExpiry] = useState(initialExpiry);
@@ -24,6 +27,10 @@ function EditForm({ link, onSave, onCancel }) {
   const [isArchived, setIsArchived] = useState(initialArchived);
   const [isPasswordProtected, setIsPasswordProtected] = useState(initialPasswordProtected);
   const [linkPassword, setLinkPassword] = useState("");
+  const [metaTitle, setMetaTitle] = useState(initialMetaTitle);
+  const [metaDescription, setMetaDescription] = useState(initialMetaDescription);
+  const [metaImage, setMetaImage] = useState(initialMetaImage);
+  const [showMeta, setShowMeta] = useState(Boolean(initialMetaTitle || initialMetaDescription || initialMetaImage));
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -61,6 +68,16 @@ function EditForm({ link, onSave, onCancel }) {
       } else {
         changes.password = null;
       }
+    }
+
+    if (metaTitle.trim() !== initialMetaTitle) {
+      changes.metaTitle = metaTitle.trim() || null;
+    }
+    if (metaDescription.trim() !== initialMetaDescription) {
+      changes.metaDescription = metaDescription.trim() || null;
+    }
+    if (metaImage.trim() !== initialMetaImage) {
+      changes.metaImage = metaImage.trim() || null;
     }
 
     if (Object.keys(changes).length === 0) return onCancel();
@@ -198,6 +215,71 @@ function EditForm({ link, onSave, onCancel }) {
                 ? "Link is currently password-protected. Enter a new password to update it."
                 : "Visitors will be required to enter this password to view destination."}
             </p>
+          </div>
+        )}
+      </div>
+
+      {/* Social Card / OpenGraph Meta */}
+      <div className="form-group" style={{ marginBottom: "16px" }}>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => setShowMeta(!showMeta)}
+          style={{ display: "flex", alignItems: "center", gap: "6px" }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+            <line x1="8" y1="21" x2="16" y2="21" />
+            <line x1="12" y1="17" x2="12" y2="21" />
+          </svg>
+          <span>{showMeta ? "Hide Social Card Settings" : "Customize Social Card & OpenGraph"}</span>
+        </button>
+
+        {showMeta && (
+          <div
+            style={{
+              marginTop: "10px",
+              padding: "14px",
+              background: "var(--surface)",
+              border: "1px solid var(--border-subtle)",
+              borderRadius: "var(--radius-md)",
+            }}
+          >
+            <div className="form-group">
+              <label className="form-label" htmlFor="edit-meta-title">Social Card Title</label>
+              <input
+                id="edit-meta-title"
+                type="text"
+                className="form-input"
+                placeholder="Title for social media embeds"
+                value={metaTitle}
+                maxLength={120}
+                onChange={(e) => setMetaTitle(e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="edit-meta-desc">Social Card Description</label>
+              <input
+                id="edit-meta-desc"
+                type="text"
+                className="form-input"
+                placeholder="Summary snippet for social posts"
+                value={metaDescription}
+                maxLength={300}
+                onChange={(e) => setMetaDescription(e.target.value)}
+              />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" htmlFor="edit-meta-img">Social Thumbnail URL</label>
+              <input
+                id="edit-meta-img"
+                type="url"
+                className="form-input"
+                placeholder="https://example.com/thumbnail.png"
+                value={metaImage}
+                onChange={(e) => setMetaImage(e.target.value)}
+              />
+            </div>
           </div>
         )}
       </div>

@@ -24,6 +24,10 @@ export default function CreateLinkPage() {
   const [expiredRedirectUrl, setExpiredRedirectUrl] = useState("");
   const [linkPassword, setLinkPassword] = useState("");
   const [enablePassword, setEnablePassword] = useState(false);
+  const [showMeta, setShowMeta] = useState(false);
+  const [metaTitle, setMetaTitle] = useState("");
+  const [metaDescription, setMetaDescription] = useState("");
+  const [metaImage, setMetaImage] = useState("");
   const [selectedPreset, setSelectedPreset] = useState(EXPIRATION_PRESETS[0]);
   const [customExpiry, setCustomExpiry] = useState("");
   const [showUtm, setShowUtm] = useState(false);
@@ -138,6 +142,9 @@ export default function CreateLinkPage() {
         maxClicks: maxClicks ? Number(maxClicks) : undefined,
         expiredRedirectUrl: expiredRedirectUrl.trim() || undefined,
         password: enablePassword && linkPassword.trim() ? linkPassword.trim() : undefined,
+        metaTitle: metaTitle.trim() || undefined,
+        metaDescription: metaDescription.trim() || undefined,
+        metaImage: metaImage.trim() || undefined,
       });
 
       setResult(res);
@@ -244,6 +251,10 @@ export default function CreateLinkPage() {
     setBatchRawText("");
     setLinkPassword("");
     setEnablePassword(false);
+    setMetaTitle("");
+    setMetaDescription("");
+    setMetaImage("");
+    setShowMeta(false);
     setError("");
   };
 
@@ -528,6 +539,110 @@ export default function CreateLinkPage() {
                   required={enablePassword}
                 />
                 <p className="form-helper">Visitors will be prompted to enter this passcode before being redirected.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Social OpenGraph & Link Card Preview */}
+          <div className="form-group" style={{ marginBottom: "20px" }}>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setShowMeta(!showMeta)}
+              style={{ display: "flex", alignItems: "center", gap: "8px" }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                <line x1="8" y1="21" x2="16" y2="21" />
+                <line x1="12" y1="17" x2="12" y2="21" />
+              </svg>
+              <span>{showMeta ? "Hide Social Card Settings" : "Customize Social Card & OpenGraph Tags"}</span>
+            </button>
+
+            {showMeta && (
+              <div
+                style={{
+                  marginTop: "12px",
+                  padding: "16px",
+                  background: "var(--surface)",
+                  border: "1px solid var(--border-subtle)",
+                  borderRadius: "var(--radius-md)",
+                }}
+              >
+                <div className="form-group">
+                  <label className="form-label" htmlFor="meta-title">Social Card Title</label>
+                  <input
+                    id="meta-title"
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. Summer Release 2026 Announcement"
+                    value={metaTitle}
+                    maxLength={120}
+                    onChange={(e) => setMetaTitle(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="meta-desc">Social Card Description</label>
+                  <input
+                    id="meta-desc"
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. Explore our newest feature updates and developer tools."
+                    value={metaDescription}
+                    maxLength={300}
+                    onChange={(e) => setMetaDescription(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="meta-img">Social Image Thumbnail URL</label>
+                  <input
+                    id="meta-img"
+                    type="url"
+                    className="form-input"
+                    placeholder="https://example.com/banner.png"
+                    value={metaImage}
+                    onChange={(e) => setMetaImage(e.target.value)}
+                  />
+                </div>
+
+                {/* Live Social Card Preview */}
+                {(metaTitle || metaDescription || metaImage) && (
+                  <div style={{ marginTop: "16px" }}>
+                    <div style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", marginBottom: "6px" }}>
+                      Live Social Card Preview (Twitter / Slack / WhatsApp)
+                    </div>
+                    <div
+                      style={{
+                        maxWidth: 420,
+                        border: "1px solid var(--border-subtle)",
+                        borderRadius: "8px",
+                        overflow: "hidden",
+                        background: "var(--bg-surface-raised)",
+                      }}
+                    >
+                      {metaImage ? (
+                        <img
+                          src={metaImage}
+                          alt="Preview"
+                          style={{ width: "100%", height: 160, objectFit: "cover", display: "block" }}
+                          onError={(e) => { e.target.style.display = "none"; }}
+                        />
+                      ) : (
+                        <div style={{ height: 90, background: "rgba(59, 130, 246, 0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: "0.8rem" }}>
+                          No image thumbnail provided
+                        </div>
+                      )}
+                      <div style={{ padding: "12px" }}>
+                        <div style={{ fontWeight: 600, fontSize: "0.95rem", color: "var(--text-primary)", marginBottom: "4px" }}>
+                          {metaTitle || "Link Title"}
+                        </div>
+                        <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", lineHeight: 1.4 }}>
+                          {metaDescription || "Link description will appear here when shared on social media or chat applications."}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -88,6 +88,21 @@ const linkPassword = z.preprocess(
   z.string().min(3, "Password must be at least 3 characters").max(64, "Password cannot exceed 64 characters").nullable().optional()
 );
 
+const metaTitle = z.preprocess(
+  (v) => (v === "" || v === undefined ? undefined : v === null ? null : String(v)),
+  z.string().trim().max(120, "Title cannot exceed 120 characters").nullable().optional()
+);
+
+const metaDescription = z.preprocess(
+  (v) => (v === "" || v === undefined ? undefined : v === null ? null : String(v)),
+  z.string().trim().max(300, "Description cannot exceed 300 characters").nullable().optional()
+);
+
+const metaImage = z.preprocess(
+  (v) => (v === "" || v === undefined ? undefined : v === null ? null : v),
+  originalUrl.nullable().optional()
+);
+
 const verifyPasswordBody = z.strictObject(
   {
     password: z.string({ error: "Password is required" }).min(1, "Password cannot be empty").max(64),
@@ -104,6 +119,9 @@ const createUrlBody = z.strictObject(
     maxClicks: maxClicks.optional(),
     expiredRedirectUrl: expiredRedirectUrl.optional(),
     password: linkPassword.optional(),
+    metaTitle: metaTitle.optional(),
+    metaDescription: metaDescription.optional(),
+    metaImage: metaImage.optional(),
   },
   { error: bodyTypeError }
 );
@@ -123,6 +141,9 @@ const updateUrlBody = z
       maxClicks: maxClicks.optional(),
       expiredRedirectUrl: expiredRedirectUrl.optional(),
       password: linkPassword.optional(),
+      metaTitle: metaTitle.optional(),
+      metaDescription: metaDescription.optional(),
+      metaImage: metaImage.optional(),
     },
     { error: bodyTypeError }
   )
