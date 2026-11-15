@@ -19,7 +19,11 @@ export default function LinkDetailsModal({
   const shortUrl = link.shortUrl || `${origin}/${link.shortCode}`;
 
   const isExpired = Boolean(link.isExpired);
-  const statusLabel = isExpired
+  const statusLabel = link.status === "deleted"
+    ? "Deleted"
+    : link.isArchived
+    ? "Archived"
+    : isExpired
     ? "Expired"
     : link.status === "disabled"
     ? "Disabled"
@@ -30,6 +34,8 @@ export default function LinkDetailsModal({
       ? "badge-active"
       : statusLabel === "Disabled"
       ? "badge-disabled"
+      : statusLabel === "Archived"
+      ? "badge-archived"
       : "badge-expired";
 
   const formattedCreated = link.createdAt
@@ -45,6 +51,10 @@ export default function LinkDetailsModal({
         timeStyle: "short",
       })
     : "Never expires";
+
+  const quotaPercent = link.maxClicks
+    ? Math.min(100, Math.round(((link.clicks || 0) / link.maxClicks) * 100))
+    : null;
 
   return (
     <Modal open={isModalOpen} onClose={onClose} title="Link Telemetry & Analytics">
@@ -77,6 +87,7 @@ export default function LinkDetailsModal({
 
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <span className={`badge ${statusBadgeClass}`}>{statusLabel}</span>
+            {link.isArchived && <span className="badge badge-archived">Archived</span>}
             <button
               type="button"
               className="action-chip-btn"
@@ -109,6 +120,33 @@ export default function LinkDetailsModal({
           </div>
         </div>
 
+        {/* Tags */}
+        {link.tags && link.tags.length > 0 && (
+          <div>
+            <span style={{ display: "block", fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "6px" }}>
+              Tags
+            </span>
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+              {link.tags.map((t) => (
+                <span
+                  key={t}
+                  style={{
+                    fontSize: "0.75rem",
+                    padding: "2px 8px",
+                    background: "var(--bg-surface-raised)",
+                    border: "1px solid var(--border-subtle)",
+                    borderRadius: "var(--radius-sm)",
+                    color: "var(--text-secondary)",
+                    fontFamily: "var(--font-mono)",
+                  }}
+                >
+                  #{t}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Metrics Grid */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "12px" }}>
           <div style={{ background: "var(--surface)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", padding: "14px" }}>
@@ -116,6 +154,18 @@ export default function LinkDetailsModal({
             <div style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--text-primary)", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
               {link.clicks || 0}
             </div>
+          </div>
+
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", padding: "14px" }}>
+            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Click Quota</div>
+            <div style={{ fontSize: "1rem", fontWeight: 600, color: link.maxClicks ? "#f59e0b" : "var(--text-secondary)", marginTop: "6px" }}>
+              {link.maxClicks ? `${link.clicks || 0} / ${link.maxClicks}` : "Unlimited"}
+            </div>
+            {quotaPercent !== null && (
+              <div style={{ height: "4px", background: "var(--border-subtle)", borderRadius: "2px", marginTop: "8px", overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${quotaPercent}%`, background: quotaPercent >= 100 ? "var(--danger)" : "#f59e0b" }} />
+              </div>
+            )}
           </div>
 
           <div style={{ background: "var(--surface)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", padding: "14px" }}>
@@ -168,6 +218,29 @@ export default function LinkDetailsModal({
           </div>
         </div>
 
+        {/* Expired Fallback URL if defined */}
+        {link.expiredRedirectUrl && (
+          <div>
+            <label style={{ display: "block", fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "6px" }}>
+              Fallback URL (When Expired / Quota Exceeded)
+            </label>
+            <div
+              style={{
+                padding: "8px 12px",
+                background: "var(--surface)",
+                borderRadius: "var(--radius-sm)",
+                border: "1px solid var(--border-subtle)",
+                fontSize: "0.85rem",
+                color: "#f59e0b",
+                fontFamily: "var(--font-mono)",
+                wordBreak: "break-all",
+              }}
+            >
+              {link.expiredRedirectUrl}
+            </div>
+          </div>
+        )}
+
         {/* Timestamps */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", fontSize: "0.85rem" }}>
           <div>
@@ -201,7 +274,7 @@ export default function LinkDetailsModal({
               <line x1="6" y1="20" x2="6" y2="14" />
             </svg>
             <span style={{ fontSize: "0.875rem", color: "var(--text-primary)", fontWeight: 500 }}>
-              Device, browser, OS &amp; timeseries charts available
+              Device, browser, country &amp; timeseries charts available
             </span>
           </div>
           <Link
@@ -257,7 +330,7 @@ export default function LinkDetailsModal({
                 onOpenEdit(link);
               }}
             >
-              Edit Destination
+              Edit Details
             </button>
           </div>
         </div>

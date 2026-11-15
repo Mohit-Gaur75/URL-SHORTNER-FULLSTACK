@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Modal from "./Modal";
 
 function toLocalInput(iso) {
@@ -10,8 +10,18 @@ function toLocalInput(iso) {
 
 function EditForm({ link, onSave, onCancel }) {
   const initialExpiry = toLocalInput(link.expiresAt);
+  const initialTagsStr = (link.tags || []).join(", ");
+  const initialMaxClicks = link.maxClicks != null ? String(link.maxClicks) : "";
+  const initialFallback = link.expiredRedirectUrl || "";
+  const initialArchived = Boolean(link.isArchived);
+
   const [originalUrl, setOriginalUrl] = useState(link.originalUrl);
   const [expiry, setExpiry] = useState(initialExpiry);
+  const [tags, setTags] = useState(initialTagsStr);
+  const [maxClicks, setMaxClicks] = useState(initialMaxClicks);
+  const [expiredRedirectUrl, setExpiredRedirectUrl] = useState(initialFallback);
+  const [isArchived, setIsArchived] = useState(initialArchived);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -25,6 +35,22 @@ function EditForm({ link, onSave, onCancel }) {
     if (expiry !== initialExpiry) {
       changes.expiresAt = expiry ? new Date(expiry).toISOString() : null;
     }
+    if (tags !== initialTagsStr) {
+      changes.tags = tags
+        .split(",")
+        .map((t) => t.trim().toLowerCase())
+        .filter(Boolean);
+    }
+    if (maxClicks !== initialMaxClicks) {
+      changes.maxClicks = maxClicks.trim() ? parseInt(maxClicks, 10) : null;
+    }
+    if (expiredRedirectUrl.trim() !== initialFallback) {
+      changes.expiredRedirectUrl = expiredRedirectUrl.trim() || null;
+    }
+    if (isArchived !== initialArchived) {
+      changes.isArchived = isArchived;
+    }
+
     if (Object.keys(changes).length === 0) return onCancel();
 
     setSaving(true);
@@ -32,7 +58,7 @@ function EditForm({ link, onSave, onCancel }) {
     try {
       await onSave(changes);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Failed to save link updates");
       setSaving(false);
     }
   };
@@ -40,7 +66,7 @@ function EditForm({ link, onSave, onCancel }) {
   return (
     <form onSubmit={submit}>
       <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", marginBottom: "18px" }}>
-        Short slug <strong style={{ color: "var(--primary)" }}>{link.shortCode}</strong> remains immutable. You can update its destination URL and expiration timestamp.
+        Short slug <strong style={{ color: "var(--primary)" }}>{link.shortCode}</strong> remains immutable. You can update its destination URL, tags, quotas, fallback redirect, and expiration.
       </p>
 
       <div className="form-group">
@@ -55,6 +81,54 @@ function EditForm({ link, onSave, onCancel }) {
           onChange={(e) => setOriginalUrl(e.target.value)}
           required
         />
+      </div>
+
+      <div className="form-group">
+        <label className="form-label" htmlFor="edit-tags">
+          Tags (comma-separated)
+        </label>
+        <input
+          id="edit-tags"
+          type="text"
+          className="form-input"
+          placeholder="e.g. marketing, summer-promo, campaign"
+          value={tags}
+          onChange={(e) => setTags(e.target.value)}
+        />
+        <p className="form-helper">Organize links for quick filtering and grouping.</p>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+        <div className="form-group">
+          <label className="form-label" htmlFor="edit-max-clicks">
+            Click Limit / Quota
+          </label>
+          <input
+            id="edit-max-clicks"
+            type="number"
+            min="1"
+            className="form-input"
+            placeholder="Unlimited"
+            value={maxClicks}
+            onChange={(e) => setMaxClicks(e.target.value)}
+          />
+          <p className="form-helper">Deactivates or redirects after reaching quota.</p>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label" htmlFor="edit-fallback-url">
+            Expired Fallback URL
+          </label>
+          <input
+            id="edit-fallback-url"
+            type="url"
+            className="form-input"
+            placeholder="https://..."
+            value={expiredRedirectUrl}
+            onChange={(e) => setExpiredRedirectUrl(e.target.value)}
+          />
+          <p className="form-helper">Redirect here if expired/max clicks reached.</p>
+        </div>
       </div>
 
       <div className="form-group">
@@ -84,6 +158,18 @@ function EditForm({ link, onSave, onCancel }) {
             ? "This link has expired. Set a future date to re-activate it."
             : "Leave empty for permanent links that never expire."}
         </p>
+      </div>
+
+      <div className="form-group" style={{ marginBottom: "20px" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "0.9rem", color: "var(--text-primary)" }}>
+          <input
+            type="checkbox"
+            checked={isArchived}
+            onChange={(e) => setIsArchived(e.target.checked)}
+            style={{ width: "16px", height: "16px", accentColor: "var(--primary)" }}
+          />
+          <span>Archive this link (hides from default list view)</span>
+        </label>
       </div>
 
       {error && (

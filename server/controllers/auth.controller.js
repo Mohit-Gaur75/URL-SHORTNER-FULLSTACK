@@ -1,4 +1,5 @@
 const authService = require("../services/auth.service");
+const { logAudit, listAuditLogs } = require("../services/audit.service");
 const { REFRESH_COOKIE, setRefreshCookie, clearRefreshCookie } = require("../utils/cookies");
 const { AuthenticationError } = require("../utils/errors");
 
@@ -12,12 +13,16 @@ function sendSession(res, status, { user, session }) {
 
 exports.register = async (req, res) => {
   const { name, email, password } = req.validated.body;
-  sendSession(res, 201, await authService.register({ name, email, password }));
+  const result = await authService.register({ name, email, password });
+  logAudit({ user: result.user, action: "AUTH_REGISTER", details: { email }, req });
+  sendSession(res, 201, result);
 };
 
 exports.login = async (req, res) => {
   const { email, password } = req.validated.body;
-  sendSession(res, 200, await authService.login({ email, password }));
+  const result = await authService.login({ email, password });
+  logAudit({ user: result.user, action: "AUTH_LOGIN", details: { email }, req });
+  sendSession(res, 200, result);
 };
 
 exports.refresh = async (req, res) => {
@@ -42,6 +47,7 @@ exports.logout = async (req, res) => {
 
 exports.logoutEverywhere = async (req, res) => {
   await authService.logoutEverywhere(req.user._id);
+  logAudit({ user: req.user, action: "AUTH_LOGOUT_ALL", req });
   clearRefreshCookie(res);
   res.status(204).end();
 };
@@ -53,6 +59,7 @@ exports.getMe = async (req, res) => {
 exports.updateProfile = async (req, res) => {
   const { name } = req.validated.body;
   const user = await authService.updateProfile(req.user._id, { name });
+  logAudit({ user: req.user, action: "PROFILE_UPDATE", details: { newName: name }, req });
   res.json({ user });
 };
 
@@ -62,5 +69,21 @@ exports.changePassword = async (req, res) => {
     currentPassword,
     newPassword,
   });
+  logAudit({ user: req.user, action: "PASSWORD_CHANGE", req });
   sendSession(res, 200, { user, session });
+};
+
+exports.deleteAccount = async (req, res) => {
+  const { password } = req.validated.body;
+  await authService.deleteAccount(req.user._id, password);
+  logAudit({ user: req.user, action: "ACCOUNT_DELETE", req });
+  clearRefreshCookie(res);
+  res.status(204).end();
+};
+
+exports.getAuditLogs = async (req, res) => {
+  const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const result = await listAuditLogs(req.user, { limit, page });
+  res.json(result);
 };

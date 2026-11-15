@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import { updateProfile, changePassword, logoutEverywhere } from "../api/auth";
+import { updateProfile, changePassword, logoutEverywhere, deleteAccount, fetchAuditLogs } from "../api/auth";
+import Modal from "../components/Modal";
 
 export default function SettingsPage() {
   const { user, logout, updateUser } = useAuth();
@@ -21,6 +22,38 @@ export default function SettingsPage() {
 
   // Logout everywhere state
   const [revoking, setRevoking] = useState(false);
+
+  // Audit Logs state
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditTotalPages, setAuditTotalPages] = useState(1);
+  const [loadingAudit, setLoadingAudit] = useState(false);
+
+  // Delete Account Modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  const loadAuditLogs = (page = 1) => {
+    setLoadingAudit(true);
+    fetchAuditLogs({ page, limit: 8 })
+      .then((data) => {
+        setAuditLogs(data?.items || []);
+        setAuditPage(data?.page || 1);
+        setAuditTotalPages(data?.totalPages || 1);
+      })
+      .catch((err) => {
+        console.warn("Failed to load audit logs:", err.message);
+      })
+      .finally(() => {
+        setLoadingAudit(false);
+      });
+  };
+
+  useEffect(() => {
+    loadAuditLogs(1);
+  }, []);
 
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
@@ -57,6 +90,7 @@ export default function SettingsPage() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
+      loadAuditLogs(1);
     } catch (err) {
       showError(err.message || "Failed to change password");
     } finally {
@@ -80,6 +114,25 @@ export default function SettingsPage() {
     }
   };
 
+  const handleDeleteAccountSubmit = async (e) => {
+    e.preventDefault();
+    if (!deletePassword) {
+      setDeleteError("Password is required to confirm account deletion");
+      return;
+    }
+    setDeletingAccount(true);
+    setDeleteError("");
+    try {
+      await deleteAccount({ password: deletePassword });
+      showSuccess("Account permanently deleted. Thank you for using our service.");
+      logout();
+      window.location.href = "/register";
+    } catch (err) {
+      setDeleteError(err.message || "Failed to delete account. Please verify your password.");
+      setDeletingAccount(false);
+    }
+  };
+
   const handleCopyApiSnippet = () => {
     const snippet = `curl -X POST http://localhost:5000/api/urls \\
   -H "Content-Type: application/json" \\
@@ -95,7 +148,7 @@ export default function SettingsPage() {
         <div className="dashboard-title-group">
           <h1>Account &amp; Security Settings</h1>
           <p className="dashboard-subtitle">
-            Manage your session security policies, profile preferences, and API integrations.
+            Manage your session security policies, profile preferences, audit activity logs, and account lifecycle.
           </p>
         </div>
       </div>
@@ -203,7 +256,7 @@ export default function SettingsPage() {
                 aria-label={showCurrent ? "Hide password" : "Show password"}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8z" />
                   <circle cx="12" cy="12" r="3" />
                 </svg>
               </button>
@@ -232,7 +285,7 @@ export default function SettingsPage() {
                 aria-label={showNew ? "Hide password" : "Show password"}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8z" />
                   <circle cx="12" cy="12" r="3" />
                 </svg>
               </button>
@@ -265,49 +318,105 @@ export default function SettingsPage() {
         </form>
       </div>
 
-      {/* Security Engine Overview */}
+      {/* Security Audit Activity Log Card */}
       <div className="dashboard-card" style={{ marginBottom: "24px" }}>
-        <h2 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "16px" }}>
-          Active Security &amp; Isolation Architecture
-        </h2>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "16px" }}>
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", padding: "14px" }}>
-            <span style={{ fontWeight: 600, color: "var(--text-primary)", display: "block", fontSize: "0.9rem" }}>
-              JWT Access Tokens
-            </span>
-            <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "var(--text-muted)" }}>
-              Short-lived 15-minute access token lifespan in memory, preventing persistent credential leaks.
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+          <div>
+            <h2 style={{ fontSize: "1.1rem", fontWeight: 600, margin: 0 }}>Security Audit Activity Log</h2>
+            <p style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+              Immutable audit records of critical authentication events, IP addresses, and timestamps.
             </p>
           </div>
-
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", padding: "14px" }}>
-            <span style={{ fontWeight: 600, color: "var(--text-primary)", display: "block", fontSize: "0.9rem" }}>
-              HttpOnly Refresh Cookies
-            </span>
-            <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "var(--text-muted)" }}>
-              Single-use rotating refresh tokens delivered via secure `SameSite=Strict` cookies, immune to XSS.
-            </p>
-          </div>
-
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", padding: "14px" }}>
-            <span style={{ fontWeight: 600, color: "var(--text-primary)", display: "block", fontSize: "0.9rem" }}>
-              Rate Limiting &amp; HPP
-            </span>
-            <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "var(--text-muted)" }}>
-              Per-IP and per-account sliding-window request throttling with HTTP parameter pollution defense.
-            </p>
-          </div>
-
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", padding: "14px" }}>
-            <span style={{ fontWeight: 600, color: "var(--text-primary)", display: "block", fontSize: "0.9rem" }}>
-              NoSQL Injection Defense
-            </span>
-            <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "var(--text-muted)" }}>
-              Payload key sanitization strips operator injections (`$gt`, `$where`) and prototype pollution vectors.
-            </p>
-          </div>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => loadAuditLogs(auditPage)}
+            disabled={loadingAudit}
+          >
+            {loadingAudit ? "Refreshing..." : "Refresh"}
+          </button>
         </div>
+
+        {loadingAudit && auditLogs.length === 0 ? (
+          <div style={{ padding: "20px 0", color: "var(--text-muted)", textAlign: "center" }}>
+            Loading audit trail...
+          </div>
+        ) : auditLogs.length > 0 ? (
+          <>
+            <div className="table-wrap">
+              <table className="modern-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Event / Action</th>
+                    <th scope="col">IP Address</th>
+                    <th scope="col">Timestamp</th>
+                    <th scope="col">Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditLogs.map((log) => (
+                    <tr key={log.id}>
+                      <td>
+                        <span
+                          style={{
+                            fontSize: "0.75rem",
+                            fontFamily: "var(--font-mono)",
+                            padding: "2px 6px",
+                            background: "rgba(59, 130, 246, 0.12)",
+                            color: "#60a5fa",
+                            borderRadius: "var(--radius-sm)",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {log.action}
+                        </span>
+                      </td>
+                      <td style={{ fontSize: "0.85rem", fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}>
+                        {log.ip || "—"}
+                      </td>
+                      <td style={{ fontSize: "0.85rem", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+                        {new Date(log.createdAt).toLocaleString()}
+                      </td>
+                      <td style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                        {log.details && Object.keys(log.details).length > 0
+                          ? JSON.stringify(log.details)
+                          : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {auditTotalPages > 1 && (
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "12px" }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={auditPage <= 1 || loadingAudit}
+                  onClick={() => loadAuditLogs(auditPage - 1)}
+                >
+                  &larr; Prev
+                </button>
+                <span style={{ fontSize: "0.85rem", alignSelf: "center", color: "var(--text-secondary)" }}>
+                  Page {auditPage} of {auditTotalPages}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={auditPage >= auditTotalPages || loadingAudit}
+                  onClick={() => loadAuditLogs(auditPage + 1)}
+                >
+                  Next &rarr;
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
+          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", margin: "8px 0" }}>
+            No security audit events recorded yet.
+          </p>
+        )}
       </div>
 
       {/* Developer API Reference */}
@@ -344,10 +453,10 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Session Management & Danger Zone */}
-      <div className="dashboard-card" style={{ border: "1px solid rgba(239, 68, 68, 0.3)" }}>
-        <h2 style={{ fontSize: "1.1rem", fontWeight: 600, color: "var(--danger)", marginBottom: "8px" }}>
-          Session Management &amp; Termination
+      {/* Session Management Card */}
+      <div className="dashboard-card" style={{ marginBottom: "24px" }}>
+        <h2 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "8px" }}>
+          Session Management
         </h2>
         <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "16px" }}>
           Terminate active browser sessions or invalidate all device refresh tokens across your account.
@@ -374,6 +483,82 @@ export default function SettingsPage() {
           </button>
         </div>
       </div>
+
+      {/* Danger Zone: GDPR Account Deletion */}
+      <div className="dashboard-card" style={{ border: "1px solid rgba(239, 68, 68, 0.35)", background: "rgba(239, 68, 68, 0.03)" }}>
+        <h2 style={{ fontSize: "1.1rem", fontWeight: 600, color: "var(--danger)", marginBottom: "8px" }}>
+          Danger Zone &mdash; Right to Be Forgotten
+        </h2>
+        <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "16px" }}>
+          Permanently delete your user account, revoke all session credentials, purge cached tokens in Redis, and soft-delete all vanity links. This action cannot be undone.
+        </p>
+
+        <button
+          type="button"
+          className="btn btn-danger btn-sm"
+          onClick={() => {
+            setDeletePassword("");
+            setDeleteError("");
+            setShowDeleteModal(true);
+          }}
+        >
+          Delete My Account Permanently
+        </button>
+      </div>
+
+      {/* Account Deletion Confirmation Modal */}
+      <Modal
+        open={showDeleteModal}
+        onClose={() => !deletingAccount && setShowDeleteModal(false)}
+        title="Permanently Delete Account?"
+      >
+        <form onSubmit={handleDeleteAccountSubmit}>
+          <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", marginBottom: "16px" }}>
+            This will permanently remove your account, revoke all tokens across every device, and deactivate all shortened links you own.
+          </p>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="delete-account-pw">
+              Enter your current password to confirm:
+            </label>
+            <input
+              id="delete-account-pw"
+              type="password"
+              className="form-input"
+              value={deletePassword}
+              onChange={(e) => setDeletePassword(e.target.value)}
+              placeholder="Your current password"
+              required
+              disabled={deletingAccount}
+              autoFocus
+            />
+          </div>
+
+          {deleteError && (
+            <div className="alert-error" role="alert" style={{ marginBottom: "16px" }}>
+              <span>{deleteError}</span>
+            </div>
+          )}
+
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setShowDeleteModal(false)}
+              disabled={deletingAccount}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-danger"
+              disabled={deletingAccount || !deletePassword}
+            >
+              {deletingAccount ? "Deleting Account..." : "Confirm Delete Account"}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

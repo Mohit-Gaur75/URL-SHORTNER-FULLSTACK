@@ -8,7 +8,17 @@ export default function QrCodeModal({ isOpen, open, onClose, shortUrl, title = "
   const [dataUrl, setDataUrl] = useState("");
   const [svgString, setSvgString] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [darkColor, setDarkColor] = useState("#0f172a");
+  const [lightColor, setLightColor] = useState("#ffffff");
   const { showSuccess, showError } = useToast();
+
+  const COLOR_PALETTES = [
+    { name: "Slate", dark: "#0f172a", light: "#ffffff" },
+    { name: "Indigo", dark: "#312e81", light: "#eef2ff" },
+    { name: "Emerald", dark: "#064e3b", light: "#ecfdf5" },
+    { name: "Crimson", dark: "#881337", light: "#fff1f2" },
+    { name: "Amber", dark: "#78350f", light: "#fffbeb" },
+  ];
 
   useEffect(() => {
     if (!isModalOpen || !shortUrl) return;
@@ -21,8 +31,8 @@ export default function QrCodeModal({ isOpen, open, onClose, shortUrl, title = "
         width: 320,
         margin: 2,
         color: {
-          dark: "#0f172a",
-          light: "#ffffff",
+          dark: darkColor,
+          light: lightColor,
         },
         errorCorrectionLevel: "H",
       }),
@@ -30,8 +40,8 @@ export default function QrCodeModal({ isOpen, open, onClose, shortUrl, title = "
         type: "svg",
         margin: 2,
         color: {
-          dark: "#0f172a",
-          light: "#ffffff",
+          dark: darkColor,
+          light: lightColor,
         },
         errorCorrectionLevel: "H",
       }),
@@ -52,7 +62,7 @@ export default function QrCodeModal({ isOpen, open, onClose, shortUrl, title = "
     return () => {
       unmounted = true;
     };
-  }, [isModalOpen, shortUrl, showError]);
+  }, [isModalOpen, shortUrl, darkColor, lightColor, showError]);
 
   const getSlug = () => shortUrl.split("/").pop() || "shortlink";
 
@@ -160,6 +170,69 @@ export default function QrCodeModal({ isOpen, open, onClose, shortUrl, title = "
               {generating ? "Generating QR Code..." : "Ready"}
             </div>
           )}
+        </div>
+
+        {/* Color Palette Customizer */}
+        <div style={{ marginBottom: "16px", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+          <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Brand Color Presets
+          </div>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "center" }}>
+            {COLOR_PALETTES.map((p) => (
+              <button
+                key={p.name}
+                type="button"
+                onClick={() => {
+                  setDarkColor(p.dark);
+                  setLightColor(p.light);
+                }}
+                style={{
+                  padding: "4px 10px",
+                  fontSize: "0.75rem",
+                  borderRadius: "var(--radius-full)",
+                  background: darkColor === p.dark ? "var(--primary-subtle)" : "var(--bg-surface-raised)",
+                  border: darkColor === p.dark ? "1px solid var(--primary)" : "1px solid var(--border-subtle)",
+                  color: darkColor === p.dark ? "var(--primary)" : "var(--text-secondary)",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <span
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: "50%",
+                    backgroundColor: p.dark,
+                    display: "inline-block",
+                  }}
+                />
+                {p.name}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "16px", marginTop: "4px", fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
+              <span>Foreground:</span>
+              <input
+                type="color"
+                value={darkColor}
+                onChange={(e) => setDarkColor(e.target.value)}
+                style={{ width: "24px", height: "24px", border: "none", borderRadius: "4px", cursor: "pointer", background: "transparent" }}
+              />
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
+              <span>Background:</span>
+              <input
+                type="color"
+                value={lightColor}
+                onChange={(e) => setLightColor(e.target.value)}
+                style={{ width: "24px", height: "24px", border: "none", borderRadius: "4px", cursor: "pointer", background: "transparent" }}
+              />
+            </label>
+          </div>
         </div>
 
         {/* Endpoint address pill */}

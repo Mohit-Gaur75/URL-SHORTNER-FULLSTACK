@@ -23,3 +23,10 @@ export const updateProfile = async (payload) =>
 
 export const changePassword = async (payload) =>
   (await http.post("/auth/change-password", payload, { headers: CSRF_HEADER })).data;
+
+export const deleteAccount = async (payload) => {
+  await http.delete("/auth/account", { data: payload, headers: CSRF_HEADER });
+};
+
+export const fetchAuditLogs = async (params = {}) =>
+  (await http.get("/auth/audit", { params })).data;

@@ -1,10 +1,20 @@
 import http from "./http";
 
-export const createUrl = async ({ originalUrl, customCode, expiresAt }) => {
+export const createUrl = async ({
+  originalUrl,
+  customCode,
+  expiresAt,
+  tags,
+  maxClicks,
+  expiredRedirectUrl,
+}) => {
   const { data } = await http.post("/urls", {
     originalUrl,
     customCode: customCode || undefined,
     expiresAt: expiresAt || undefined,
+    tags: tags && tags.length > 0 ? tags : undefined,
+    maxClicks: maxClicks != null && maxClicks !== "" ? Number(maxClicks) : undefined,
+    expiredRedirectUrl: expiredRedirectUrl || undefined,
   });
   return data;
 };
@@ -26,6 +36,11 @@ export const listUrls = async (params, { signal } = {}) => {
 
 export const updateUrl = async (id, changes) => {
   const { data } = await http.patch(`/urls/${id}`, changes);
+  return data;
+};
+
+export const restoreUrl = async (id) => {
+  const { data } = await http.patch(`/urls/${id}/restore`);
   return data;
 };
 

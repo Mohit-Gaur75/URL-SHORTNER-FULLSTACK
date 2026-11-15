@@ -42,7 +42,15 @@ async function replayOrConflict({ customCode, originalUrl, expiresAt, userId }) 
 }
 
 // Relies on database unique index as the source of truth against race conditions
-async function createShortUrl({ originalUrl, customCode, expiresAt = null, userId = null }) {
+async function createShortUrl({
+  originalUrl,
+  customCode,
+  expiresAt = null,
+  tags = [],
+  maxClicks = null,
+  expiredRedirectUrl = null,
+  userId = null,
+}) {
   const isCustom = Boolean(customCode);
   const attempts = isCustom ? 1 : MAX_RANDOM_ATTEMPTS;
 
@@ -54,6 +62,9 @@ async function createShortUrl({ originalUrl, customCode, expiresAt = null, userI
         shortCode: isCustom ? customCode : newRandomCode(),
         isCustomAlias: isCustom,
         expiresAt,
+        tags: Array.isArray(tags) ? tags : [],
+        maxClicks: maxClicks ?? null,
+        expiredRedirectUrl: expiredRedirectUrl ?? null,
       });
       return { url, created: true };
     } catch (err) {
@@ -72,6 +83,12 @@ function liveLinkFilter(code, now) {
     shortCode: code,
     status: { $in: ["active", null] },
     $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
+    $expr: {
+      $or: [
+        { $eq: [{ $ifNull: ["$maxClicks", null] }, null] },
+        { $lt: ["$clicks", "$maxClicks"] },
+      ],
+    },
   };
 }
 
@@ -79,7 +96,16 @@ function whyUnavailable(link, now) {
   if (!link) return new NotFoundError("URL not found", "URL_NOT_FOUND");
   if (link.status === "deleted") return new GoneError("This link has been deleted", "LINK_DELETED");
   if (link.status === "disabled") return new NotFoundError("This link is currently disabled", "LINK_DISABLED");
-  if ((link.status === "active" || link.status == null) && link.expiresAt && link.expiresAt <= now) {
+
+  const isExpired =
+    (link.status === "active" || link.status == null) &&
+    ((link.expiresAt && link.expiresAt <= now) ||
+      (link.maxClicks != null && link.clicks >= link.maxClicks));
+
+  if (isExpired) {
+    if (link.expiredRedirectUrl) {
+      return { redirect: link.expiredRedirectUrl };
+    }
     return new GoneError("This link has expired", "LINK_EXPIRED");
   }
   return new NotFoundError("URL not found", "URL_NOT_FOUND");
@@ -89,7 +115,7 @@ function whyUnavailable(link, now) {
 async function explainUnavailable(code, now) {
   const existing = await Url.findOne(
     { shortCode: code },
-    { status: 1, expiresAt: 1, _id: 0 },
+    { status: 1, expiresAt: 1, clicks: 1, maxClicks: 1, expiredRedirectUrl: 1, _id: 0 },
     { lean: true }
   );
   return whyUnavailable(existing, now);
@@ -104,16 +130,22 @@ async function resolveFromDatabase(code, { countClick = true, context = null } =
     ? await Url.findOneAndUpdate(
         filter,
         { $inc: { clicks: 1 }, $set: { lastClickedAt: now } },
-        { projection: { originalUrl: 1, _id: 1 }, timestamps: false, lean: true }
+        {
+          projection: { originalUrl: 1, _id: 1, clicks: 1, maxClicks: 1 },
+          timestamps: false,
+          lean: true,
+        }
       )
-    : await Url.findOne(filter, { originalUrl: 1, _id: 0 }, { lean: true });
+    : await Url.findOne(filter, { originalUrl: 1, _id: 0, clicks: 1, maxClicks: 1 }, { lean: true });
 
   if (link) {
     if (countClick && context) recordClick(link._id, context);
     return link.originalUrl;
   }
 
-  throw await explainUnavailable(code, now);
+  const result = await explainUnavailable(code, now);
+  if (result && result.redirect) return result.redirect;
+  throw result;
 }
 
 // Counts a click asynchronously without delaying the visitor's HTTP redirect.
@@ -149,7 +181,7 @@ function readLiveLinkOnce(code) {
   if (!pending) {
     const query = Url.findOne(
       liveLinkFilter(code, new Date()),
-      { originalUrl: 1, expiresAt: 1, _id: 1 },
+      { originalUrl: 1, expiresAt: 1, _id: 1, maxClicks: 1, clicks: 1 },
       { lean: true }
     );
     pending = Promise.resolve(typeof query?.exec === "function" ? query.exec() : query)
@@ -174,20 +206,27 @@ async function resolveShortCode(code, { countClick = true, context = null } = {}
   // 1. Cache hit: instant response, zero database read
   const cached = await linkCache.get(code);
   if (cached) {
-    if (countClick) countClickInBackground(code, cached.id, context);
-    return cached.originalUrl;
+    // If the cached link has a click cap, fallback to database resolution to check accurately
+    if (cached.maxClicks == null) {
+      if (countClick) countClickInBackground(code, cached.id, context);
+      return cached.originalUrl;
+    }
   }
 
   // 2. Cache miss: read MongoDB (coalesced via single-flight pattern)
   const link = await readLiveLinkOnce(code);
   if (link) {
-    linkCache.set(code, link.originalUrl, link.expiresAt, link._id); // non-blocking cache write
+    if (link.maxClicks == null) {
+      linkCache.set(code, link.originalUrl, link.expiresAt, link._id); // non-blocking cache write
+    }
     if (countClick) countClickInBackground(code, link._id, context);
     return link.originalUrl;
   }
 
-  // 3. Not live: disabled, deleted, expired, or non-existent (never cached)
-  throw await explainUnavailable(code, new Date());
+  // 3. Not live: disabled, deleted, expired, archived, or non-existent (never cached)
+  const result = await explainUnavailable(code, new Date());
+  if (result && result.redirect) return result.redirect;
+  throw result;
 }
 
 // ---------------------------------------------------------------- managing a link
@@ -208,7 +247,7 @@ async function getUrlFor(actor, id) {
   return url;
 }
 
-const EDITABLE_FIELDS = ["originalUrl", "status", "expiresAt"];
+const EDITABLE_FIELDS = ["originalUrl", "status", "expiresAt", "isArchived", "tags", "maxClicks", "expiredRedirectUrl"];
 
 async function updateUrlFor(actor, id, changes) {
   const $set = {};
@@ -234,39 +273,98 @@ async function deleteUrlFor(actor, id) {
   );
   if (!url) throw linkNotFound();
   await linkCache.invalidate(url.shortCode); // immediately stop redirects
+  return url;
+}
+
+async function restoreUrlFor(actor, id) {
+  const filter = { _id: id };
+  if (actor.role !== "ADMIN") filter.user = actor._id;
+  const url = await Url.findOneAndUpdate(
+    filter,
+    { $set: { status: "active", isArchived: false } },
+    { returnDocument: "after", runValidators: true, lean: true }
+  );
+  if (!url) throw linkNotFound();
+  await linkCache.invalidate(url.shortCode);
+  return url;
+}
+
+async function findExistingByOriginalUrl({ originalUrl, userId }) {
+  if (!userId) return null;
+  try {
+    return await Url.findOne(
+      { user: userId, originalUrl, status: { $in: ["active", null] } },
+      { shortCode: 1, originalUrl: 1, createdAt: 1, clicks: 1 }
+    ).lean();
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------- listing
 
 const SORTABLE = { createdAt: "createdAt", updatedAt: "updatedAt", clicks: "clicks", lastClickedAt: "lastClickedAt" };
 
-function listFilter(actor, { status, search }, now) {
+function listFilter(actor, { status, search, tag }, now) {
   const filter = { user: actor._id };
   const and = [];
 
   if (status === "disabled") {
     filter.status = "disabled";
+  } else if (status === "archived") {
+    filter.status = "archived";
+  } else if (status === "deleted") {
+    filter.status = "deleted";
   } else if (status === "active") {
     filter.status = { $in: ["active", null] };
     and.push({ $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }] });
+    and.push({
+      $expr: {
+        $or: [
+          { $eq: [{ $ifNull: ["$maxClicks", null] }, null] },
+          { $lt: ["$clicks", "$maxClicks"] },
+        ],
+      },
+    });
   } else if (status === "expired") {
     filter.status = { $in: ["active", null] };
-    filter.expiresAt = { $lte: now };
+    and.push({
+      $or: [
+        { expiresAt: { $lte: now } },
+        {
+          $and: [
+            { maxClicks: { $ne: null } },
+            { $expr: { $gte: ["$clicks", "$maxClicks"] } },
+          ],
+        },
+      ],
+    });
   } else {
+    // "all": active, disabled, archived (excludes deleted by default)
     filter.status = { $in: MANAGEABLE_STATUSES };
+  }
+
+  if (tag) {
+    and.push({ tags: tag.toLowerCase() });
   }
 
   if (search) {
     const contains = new RegExp(escapeRegex(search), "i");
-    and.push({ $or: [{ shortCode: contains }, { originalUrl: contains }] });
+    and.push({
+      $or: [
+        { shortCode: contains },
+        { originalUrl: contains },
+        { tags: contains },
+      ],
+    });
   }
 
   if (and.length > 0) filter.$and = and;
   return filter;
 }
 
-async function listUrlsFor(actor, { page, limit, sort, order, status, search }) {
-  const filter = listFilter(actor, { status, search }, new Date());
+async function listUrlsFor(actor, { page, limit, sort, order, status, search, tag }) {
+  const filter = listFilter(actor, { status, search, tag }, new Date());
   const direction = order === "asc" ? 1 : -1;
   const sortSpec = { [SORTABLE[sort] ?? "createdAt"]: direction, _id: direction };
 
@@ -286,6 +384,9 @@ async function bulkCreateShortUrls({ items, userId }) {
         originalUrl: item.originalUrl,
         customCode: item.customCode,
         expiresAt: item.expiresAt,
+        tags: item.tags,
+        maxClicks: item.maxClicks,
+        expiredRedirectUrl: item.expiredRedirectUrl,
         userId,
       });
       results.push({ success: true, url, created, originalUrl: item.originalUrl });
@@ -296,4 +397,14 @@ async function bulkCreateShortUrls({ items, userId }) {
   return results;
 }
 
-module.exports = { createShortUrl, bulkCreateShortUrls, resolveShortCode, getUrlFor, updateUrlFor, deleteUrlFor, listUrlsFor };
+module.exports = {
+  createShortUrl,
+  bulkCreateShortUrls,
+  resolveShortCode,
+  getUrlFor,
+  updateUrlFor,
+  deleteUrlFor,
+  restoreUrlFor,
+  findExistingByOriginalUrl,
+  listUrlsFor,
+};

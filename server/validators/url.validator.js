@@ -58,31 +58,63 @@ const expiresAt = isoDate
   .refine((date) => date.getTime() - Date.now() <= MAX_EXPIRY_MS, "Expiry can be at most 5 years from now")
   .nullable();
 
-const createUrlBody = z.strictObject(
-  { originalUrl, customCode, expiresAt: expiresAt.optional() },
-  { error: bodyTypeError }
+const tagItem = z
+  .string({ error: "Tag must be text" })
+  .trim()
+  .toLowerCase()
+  .min(1, "Tag cannot be empty")
+  .max(30, "Tag cannot exceed 30 characters")
+  .regex(/^[a-z0-9_-]+$/, "Tags can only contain lowercase letters, numbers, hyphens, and underscores");
+
+const tags = z.preprocess((val) => {
+  if (Array.isArray(val)) {
+    return Array.from(new Set(val.map((t) => (typeof t === "string" ? t.trim().toLowerCase() : t))));
+  }
+  return val;
+}, z.array(tagItem).max(10, "You can specify at most 10 tags").optional());
+
+const maxClicks = z.preprocess(
+  (v) => (v === "" || v === undefined ? undefined : v === null ? null : Number(v)),
+  z.number().int("Max clicks must be an integer").min(1, "Max clicks must be at least 1").nullable().optional()
 );
 
+const expiredRedirectUrl = z.preprocess(
+  (v) => (v === "" || v === undefined ? undefined : v === null ? null : v),
+  originalUrl.nullable().optional()
+);
+
+const createUrlBody = z.strictObject(
+  {
+    originalUrl,
+    customCode,
+    expiresAt: expiresAt.optional(),
+    tags: tags.optional(),
+    maxClicks: maxClicks.optional(),
+    expiredRedirectUrl: expiredRedirectUrl.optional(),
+  },
+  { error: bodyTypeError }
+);
 
 const updateUrlBody = z
   .strictObject(
     {
       originalUrl: originalUrl.optional(),
       status: z
-        .enum(["active", "disabled"], { error: "Status must be 'active' or 'disabled'" })
+        .enum(["active", "disabled"], {
+          error: "Status must be 'active' or 'disabled'",
+        })
         .optional(),
-      // null removes the expiry; a date sets one
+      isArchived: z.boolean().optional(),
       expiresAt: expiresAt.optional(),
+      tags: tags.optional(),
+      maxClicks: maxClicks.optional(),
+      expiredRedirectUrl: expiredRedirectUrl.optional(),
     },
     { error: bodyTypeError }
   )
   .refine((body) => Object.keys(body).length > 0, "Provide at least one field to update");
 
-// GET /api/urls?page=2&limit=20&sort=clicks&order=desc&status=active&search=promo
-//
-// `sort` is an allow-list: the client may only sort by fields we chose. Passing
-// an arbitrary field name through to the database would let anyone force
-// slow, unindexed sorts.
+// GET /api/urls?page=2&limit=20&sort=clicks&order=desc&status=active&search=promo&tag=marketing
 const SORT_FIELDS = ["createdAt", "updatedAt", "clicks", "lastClickedAt"];
 
 const listUrlsQuery = paginationQuery.extend({
@@ -91,8 +123,16 @@ const listUrlsQuery = paginationQuery.extend({
     .default("createdAt"),
   order: z.enum(["asc", "desc"], { error: "order must be asc or desc" }).default("desc"),
   status: z
-    .enum(["all", "active", "disabled", "expired"], { error: "status must be one of: all, active, disabled, expired" })
+    .enum(["all", "active", "disabled", "expired", "archived", "deleted"], {
+      error: "status must be one of: all, active, disabled, expired, archived, deleted",
+    })
     .default("all"),
+  tag: z
+    .string({ error: "tag must be text" })
+    .trim()
+    .toLowerCase()
+    .max(30, "tag can be at most 30 characters")
+    .optional(),
   search: z
     .string({ error: "search must be text" })
     .trim()
@@ -110,6 +150,9 @@ const bulkCreateUrlBody = z.strictObject(
             originalUrl,
             customCode: customCode.optional(),
             expiresAt: expiresAt.optional(),
+            tags: tags.optional(),
+            maxClicks: maxClicks.optional(),
+            expiredRedirectUrl: expiredRedirectUrl.optional(),
           },
           { error: bodyTypeError }
         )

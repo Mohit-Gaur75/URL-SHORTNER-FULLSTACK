@@ -4,6 +4,7 @@ const helmet = require("helmet");
 const env = require("./config/env");
 const requestId = require("./middleware/requestId");
 const requestLogger = require("./middleware/requestLogger");
+const { metricsMiddleware, register } = require("./config/metrics");
 const { sanitize } = require("./middleware/sanitize");
 const preventHpp = require("./middleware/preventHpp");
 const notFound = require("./middleware/notFound");
@@ -20,6 +21,19 @@ app.use(requestId);
 
 // 2. Structured request logging (tracks method, route, latency, and status)
 app.use(requestLogger);
+
+// 3. Prometheus metrics instrumentation
+app.use(metricsMiddleware);
+
+// Expose standard Prometheus scrape endpoint (bypasses CORS and rate limiting)
+app.get("/metrics", async (req, res, next) => {
+  try {
+    res.set("Content-Type", register.contentType);
+    res.end(await register.metrics());
+  } catch (err) {
+    next(err);
+  }
+});
 
 // 2. Production Security Headers with Helmet
 app.use(

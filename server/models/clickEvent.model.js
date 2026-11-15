@@ -20,6 +20,7 @@ const clickEventSchema = new mongoose.Schema(
     browser: { type: String, maxlength: 40, default: "Unknown" },
     os: { type: String, maxlength: 40, default: "Unknown" },
     referrer: { type: String, maxlength: 100, default: "direct" }, // the site's hostname only, or "direct"
+    country: { type: String, maxlength: 60, default: "Unknown" },
   },
   { versionKey: false }
 );

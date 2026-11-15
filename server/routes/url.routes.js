@@ -1,5 +1,13 @@
 const router = require("express").Router();
-const { createUrl, bulkCreateUrls, listUrls, getUrl, updateUrl, deleteUrl } = require("../controllers/url.controller");
+const {
+  createUrl,
+  bulkCreateUrls,
+  listUrls,
+  getUrl,
+  updateUrl,
+  deleteUrl,
+  restoreUrl,
+} = require("../controllers/url.controller");
 const analytics = require("../controllers/analytics.controller");
 const { analyticsQuery, eventsQuery } = require("../validators/analytics.validator");
 const { createUrlBody, updateUrlBody, listUrlsQuery, bulkCreateUrlBody } = require("../validators/url.validator");
@@ -18,6 +26,7 @@ router.post("/bulk", authenticate, createLink, validate({ body: bulkCreateUrlBod
 router.get("/", authenticate, manageLinks, validate({ query: listUrlsQuery }), listUrls);
 router.get("/:id", authenticate, manageLinks, validate({ params: idParams }), getUrl);
 router.patch("/:id", authenticate, manageLinks, validate({ params: idParams, body: updateUrlBody }), updateUrl);
+router.patch("/:id/restore", authenticate, manageLinks, validate({ params: idParams }), restoreUrl);
 router.delete("/:id", authenticate, manageLinks, validate({ params: idParams }), deleteUrl);
 
 router.get("/:id/analytics", authenticate, analyticsLimit, validate({ params: idParams, query: eventsQuery }), analytics.listClicks);

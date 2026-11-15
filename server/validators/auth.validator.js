@@ -64,4 +64,11 @@ const changePasswordBody = z.strictObject(
   { error: bodyTypeError }
 );
 
-module.exports = { registerBody, loginBody, updateProfileBody, changePasswordBody };
+const deleteAccountBody = z.strictObject(
+  {
+    password: z.string({ error: "Password is required to confirm account deletion" }).min(1, "Password is required"),
+  },
+  { error: bodyTypeError }
+);
+
+module.exports = { registerBody, loginBody, updateProfileBody, changePasswordBody, deleteAccountBody };

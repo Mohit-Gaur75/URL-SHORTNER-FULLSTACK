@@ -1,6 +1,12 @@
 const env = require("../config/env");
 const ClickEvent = require("../models/clickEvent.model");
 const { parseUserAgent } = require("../utils/userAgent");
+let geoip;
+try {
+  geoip = require("geoip-lite");
+} catch {
+  geoip = null;
+}
 
 // "https://news.example.com/story/42?utm=x#top"  →  "news.example.com"
 // The path and query string can contain tokens, search terms or ids, so only the
@@ -17,10 +23,43 @@ function referrerHost(raw) {
   }
 }
 
+function resolveCountry(countryHeader, ip) {
+  if (
+    countryHeader &&
+    typeof countryHeader === "string" &&
+    countryHeader !== "XX" &&
+    countryHeader !== "Unknown"
+  ) {
+    return countryHeader.slice(0, 10).toUpperCase();
+  }
+  if (geoip && ip && typeof ip === "string") {
+    try {
+      const cleanIp = ip.replace(/^.*:/, "");
+      const geo = geoip.lookup(cleanIp);
+      if (geo && geo.country) {
+        return geo.country.toUpperCase();
+      }
+    } catch {
+      // ignore lookup issues on local/malformed IP
+    }
+  }
+  return "Unknown";
+}
+
 // Everything stored about a visit is decided here, in one place.
-function buildClickEvent(linkId, { userAgent, referrer }, now = new Date()) {
-  const ua = parseUserAgent(userAgent); // the raw string is dropped right here
-  return { url: linkId, clickedAt: now, device: ua.device, browser: ua.browser, os: ua.os, referrer: referrerHost(referrer) };
+// Privacy note: The raw IP and User-Agent are dropped immediately after categorization.
+function buildClickEvent(linkId, { userAgent, referrer, country, ip }, now = new Date()) {
+  const ua = parseUserAgent(userAgent);
+  const resolvedCountry = resolveCountry(country, ip);
+  return {
+    url: linkId,
+    clickedAt: now,
+    device: ua.device,
+    browser: ua.browser,
+    os: ua.os,
+    referrer: referrerHost(referrer),
+    country: resolvedCountry,
+  };
 }
 
 // FIRE AND FORGET. The visitor is waiting for their redirect; analytics must never slow
@@ -41,4 +80,4 @@ function recordClick(linkId, context) {
   }
 }
 
-module.exports = { recordClick, buildClickEvent, referrerHost };
+module.exports = { recordClick, buildClickEvent, referrerHost, resolveCountry };

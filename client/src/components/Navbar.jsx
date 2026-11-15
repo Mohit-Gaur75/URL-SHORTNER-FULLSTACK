@@ -1,13 +1,21 @@
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";
 
 export default function Navbar() {
   const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
 
   const handleLogout = () => {
     logout();
     navigate("/");
+  };
+
+  const openCommandPalette = () => {
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "k", metaKey: true, ctrlKey: true })
+    );
   };
 
   const getInitials = (name, email) => {
@@ -28,6 +36,41 @@ export default function Navbar() {
           </div>
           <span>ShortLink<span style={{ color: "var(--primary)" }}>.io</span></span>
         </Link>
+
+        {/* Global Quick Search / Command Palette shortcut */}
+        <button
+          type="button"
+          onClick={openCommandPalette}
+          className="command-palette-trigger"
+          title="Open Command Palette (Ctrl+K or Cmd+K)"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "5px 12px",
+            background: "var(--bg-surface-raised)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: "var(--radius-full)",
+            color: "var(--text-muted)",
+            fontSize: "0.85rem",
+            cursor: "pointer",
+            transition: "all var(--transition-fast)",
+          }}
+        >
+          <span>🔍 Search or jump to...</span>
+          <kbd
+            style={{
+              padding: "1px 5px",
+              background: "var(--bg-surface)",
+              border: "1px solid var(--border-muted)",
+              borderRadius: "4px",
+              fontSize: "0.7rem",
+              fontFamily: "var(--font-mono)",
+            }}
+          >
+            ⌘K
+          </kbd>
+        </button>
 
         {user ? (
           <div className="nav-links">
@@ -92,7 +135,23 @@ export default function Navbar() {
               )}
             </div>
 
-            <div className="nav-user">
+            <div className="nav-user" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              {/* Theme Toggle Button */}
+              <button
+                type="button"
+                onClick={toggleTheme}
+                title={`Switch to ${theme === "dark" ? "Light" : "Dark"} mode`}
+                className="btn btn-secondary btn-sm"
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: "var(--radius-full)",
+                  fontSize: "1rem",
+                  lineHeight: 1,
+                }}
+              >
+                {theme === "dark" ? "☀️" : "🌙"}
+              </button>
+
               <Link to="/settings" className="user-badge" title={user.email} style={{ textDecoration: "none" }}>
                 <div
                   className="user-avatar"
@@ -112,7 +171,21 @@ export default function Navbar() {
             </div>
           </div>
         ) : (
-          <div className="nav-links">
+          <div className="nav-links" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              title={`Switch to ${theme === "dark" ? "Light" : "Dark"} mode`}
+              className="btn btn-secondary btn-sm"
+              style={{
+                padding: "6px 10px",
+                borderRadius: "var(--radius-full)",
+                fontSize: "1rem",
+                lineHeight: 1,
+              }}
+            >
+              {theme === "dark" ? "☀️" : "🌙"}
+            </button>
             <Link to="/login" className="nav-link">
               Log in
             </Link>

@@ -14,15 +14,36 @@ const urlSchema = new mongoose.Schema(
 
     status: { type: String, enum: URL_STATUSES, default: "active" },
 
+    isArchived: { type: Boolean, default: false },
+
+    tags: {
+      type: [String],
+      default: [],
+    },
+
+    maxClicks: {
+      type: Number,
+      default: null,
+      min: 1,
+    },
+
+    expiredRedirectUrl: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 2048,
+    },
+
     clicks: { type: Number, default: 0, min: 0 },
     lastClickedAt: { type: Date, default: null },
 
     expiresAt: { type: Date, default: null },
   },
   {
-        timestamps: true,
+    timestamps: true,
   }
 );
+
 urlSchema.index({ user: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Url", urlSchema);

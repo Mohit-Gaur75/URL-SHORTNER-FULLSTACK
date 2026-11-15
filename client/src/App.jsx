@@ -13,6 +13,7 @@ import SettingsPage from "./pages/SettingsPage";
 import AdminPage from "./pages/AdminPage";
 import RedirectBridge from "./pages/RedirectBridge";
 import NotFound from "./pages/NotFound";
+import CommandPalette from "./components/CommandPalette";
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -20,6 +21,7 @@ export default function App() {
   return (
     <div className="app-layout">
       <Navbar />
+      <CommandPalette />
       <main className="main-content">
         <Routes>
           {/* Public Authentication & Landing */}

@@ -13,6 +13,7 @@ export default function AnalyticsPage() {
   const [activeLink, setActiveLink] = useState(null);
   const [loadingLinks, setLoadingLinks] = useState(true);
 
+  const [interval, setInterval] = useState("day");
   const [summary, setSummary] = useState(null);
   const [timeseries, setTimeseries] = useState(null);
   const [events, setEvents] = useState([]);
@@ -44,7 +45,7 @@ export default function AnalyticsPage() {
     };
   }, [selectedLinkId]);
 
-  // Load analytics when activeLink changes
+  // Load analytics when activeLink or interval changes
   useEffect(() => {
     if (!activeLink?.id) return;
 
@@ -54,8 +55,8 @@ export default function AnalyticsPage() {
 
     Promise.allSettled([
       getUrlSummary(activeLink.id),
-      getUrlTimeseries(activeLink.id, { interval: "day" }),
-      getUrlEvents(activeLink.id, { limit: 10 }),
+      getUrlTimeseries(activeLink.id, { interval }),
+      getUrlEvents(activeLink.id, { limit: 15 }),
     ]).then(([summaryRes, timeseriesRes, eventsRes]) => {
       if (unmounted) return;
       if (summaryRes.status === "fulfilled") {
@@ -78,7 +79,7 @@ export default function AnalyticsPage() {
     return () => {
       unmounted = true;
     };
-  }, [activeLink?.id]);
+  }, [activeLink?.id, interval]);
 
   const handleSelectLink = (linkId) => {
     const found = links.find((l) => l.id === linkId);
@@ -93,10 +94,11 @@ export default function AnalyticsPage() {
       showError("No click events to export for this link");
       return;
     }
-    const headers = ["Event ID", "Timestamp", "Device", "Browser", "Operating System", "Referrer"];
+    const headers = ["Event ID", "Timestamp", "Country", "Device", "Browser", "Operating System", "Referrer"];
     const rows = events.map((e) => [
       e.id,
       new Date(e.clickedAt).toISOString(),
+      e.country || "Unknown",
       e.device || "Unknown",
       e.browser || "Unknown",
       e.os || "Unknown",
@@ -133,7 +135,7 @@ export default function AnalyticsPage() {
         <div className="dashboard-title-group">
           <h1>Click-Stream Analytics &amp; Telemetry</h1>
           <p className="dashboard-subtitle">
-            Asynchronous event ingestion powered by Redis queues and BullMQ background workers.
+            Asynchronous event ingestion powered by Redis queues, GeoIP location resolver, and BullMQ background workers.
           </p>
         </div>
 
@@ -200,7 +202,7 @@ export default function AnalyticsPage() {
             No Links Created For Analytics
           </h2>
           <p style={{ color: "var(--text-secondary)", maxWidth: 460, margin: "0 auto 20px" }}>
-            Create your first shortened link to begin capturing real-time visitor telemetry, devices, referrers, and timeseries charts.
+            Create your first shortened link to begin capturing real-time visitor telemetry, devices, countries, referrers, and timeseries charts.
           </p>
           <Link to="/create" className="btn btn-primary btn-sm">
             Create Your First Link
@@ -250,12 +252,37 @@ export default function AnalyticsPage() {
                     {activeLink.originalUrl}
                   </a>
                 </div>
+                {activeLink.tags && activeLink.tags.length > 0 && (
+                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "8px" }}>
+                    {activeLink.tags.map((t) => (
+                      <span
+                        key={t}
+                        style={{
+                          fontSize: "0.7rem",
+                          padding: "1px 6px",
+                          background: "var(--bg-surface-raised)",
+                          border: "1px solid var(--border-subtle)",
+                          borderRadius: "var(--radius-sm)",
+                          color: "var(--text-secondary)",
+                          fontFamily: "var(--font-mono)",
+                        }}
+                      >
+                        #{t}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <span className={activeLink.status === "active" ? "badge badge-active" : "badge badge-disabled"}>
                   {activeLink.status}
                 </span>
+                {activeLink.maxClicks && (
+                  <span className="badge" style={{ background: "rgba(245, 158, 11, 0.15)", color: "#fbbf24", border: "1px solid rgba(245, 158, 11, 0.3)" }}>
+                    Quota: {activeLink.clicks}/{activeLink.maxClicks}
+                  </span>
+                )}
                 <Link to="/links" className="btn btn-secondary btn-sm">
                   View in Links Hub
                 </Link>
@@ -326,14 +353,31 @@ export default function AnalyticsPage() {
 
           {/* Timeseries Visual Timeline */}
           <div className="dashboard-card" style={{ marginBottom: "24px" }}>
-            <div className="create-card-header" style={{ marginBottom: "16px" }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                <line x1="16" y1="2" x2="16" y2="6" />
-                <line x1="8" y1="2" x2="8" y2="6" />
-                <line x1="3" y1="10" x2="21" y2="10" />
-              </svg>
-              <span>Daily Click Activity (30-Day Window)</span>
+            <div className="create-card-header" style={{ marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                  <line x1="16" y1="2" x2="16" y2="6" />
+                  <line x1="8" y1="2" x2="8" y2="6" />
+                  <line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+                <span>Click Activity Timeline ({interval === "hour" ? "Hourly" : interval === "week" ? "Weekly" : "Daily"})</span>
+              </div>
+
+              {/* Interval Switcher */}
+              <div style={{ display: "flex", gap: "4px" }}>
+                {["hour", "day", "week"].map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={`btn btn-sm ${interval === mode ? "btn-primary" : "btn-secondary"}`}
+                    onClick={() => setInterval(mode)}
+                    style={{ textTransform: "capitalize", padding: "4px 10px", fontSize: "0.75rem" }}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {loadingMetrics ? (
@@ -355,10 +399,13 @@ export default function AnalyticsPage() {
                 >
                   {timeseries.points.map((pt, idx) => {
                     const heightPercent = Math.max((pt.clicks / maxBucketClicks) * 100, 6);
-                    const formattedDate = new Date(pt.bucket).toLocaleDateString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                    });
+                    const dateObj = new Date(pt.bucket);
+                    const formattedDate = interval === "hour"
+                      ? dateObj.toLocaleTimeString(undefined, { hour: "numeric", hour12: true })
+                      : dateObj.toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                        });
                     return (
                       <div
                         key={idx}
@@ -401,8 +448,39 @@ export default function AnalyticsPage() {
             )}
           </div>
 
-          {/* Telemetry Distributions: Devices, Browsers, Referrers */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "20px", marginBottom: "24px" }}>
+          {/* Telemetry Distributions: Countries, Devices, Browsers, Referrers */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "20px", marginBottom: "24px" }}>
+            {/* Top Countries (GeoIP) */}
+            <div className="dashboard-card">
+              <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "16px", color: "var(--text-primary)" }}>
+                Top Countries
+              </h3>
+              {summary?.countries?.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  {summary.countries.map((c, i) => (
+                    <div key={i}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: "4px" }}>
+                        <span style={{ color: "var(--text-secondary)" }}>{c.name || "Unknown"}</span>
+                        <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{c.clicks} clicks</span>
+                      </div>
+                      <div style={{ height: "6px", background: "var(--surface)", borderRadius: "3px", overflow: "hidden" }}>
+                        <div
+                          style={{
+                            height: "100%",
+                            width: `${Math.min(100, (c.clicks / (summary.totals.clicks || 1)) * 100)}%`,
+                            background: "#f59e0b",
+                            borderRadius: "3px",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>No country data recorded yet.</p>
+              )}
+            </div>
+
             {/* Top Devices */}
             <div className="dashboard-card">
               <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "16px", color: "var(--text-primary)" }}>
@@ -508,6 +586,7 @@ export default function AnalyticsPage() {
                   <thead>
                     <tr>
                       <th scope="col">Event Timestamp</th>
+                      <th scope="col">Country</th>
                       <th scope="col">Device</th>
                       <th scope="col">Browser</th>
                       <th scope="col">Operating System</th>
@@ -519,6 +598,22 @@ export default function AnalyticsPage() {
                       <tr key={evt.id}>
                         <td style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
                           {new Date(evt.clickedAt).toLocaleString()}
+                        </td>
+                        <td>
+                          <span
+                            style={{
+                              fontSize: "0.8rem",
+                              fontWeight: 600,
+                              padding: "2px 7px",
+                              borderRadius: "var(--radius-sm)",
+                              background: "rgba(245, 158, 11, 0.12)",
+                              color: "#fbbf24",
+                              border: "1px solid rgba(245, 158, 11, 0.25)",
+                              fontFamily: "var(--font-mono)",
+                            }}
+                          >
+                            {evt.country || "Unknown"}
+                          </span>
                         </td>
                         <td>
                           <span style={{ textTransform: "capitalize", fontSize: "0.85rem" }}>

@@ -19,6 +19,9 @@ export default function CreateLinkPage() {
   // Single URL Mode state
   const [destinationUrl, setDestinationUrl] = useState("");
   const [customSlug, setCustomSlug] = useState("");
+  const [tagsInput, setTagsInput] = useState("");
+  const [maxClicks, setMaxClicks] = useState("");
+  const [expiredRedirectUrl, setExpiredRedirectUrl] = useState("");
   const [selectedPreset, setSelectedPreset] = useState(EXPIRATION_PRESETS[0]);
   const [customExpiry, setCustomExpiry] = useState("");
   const [showUtm, setShowUtm] = useState(false);
@@ -35,8 +38,47 @@ export default function CreateLinkPage() {
   // Batch Mode state
   const [batchRawText, setBatchRawText] = useState("");
   const [batchResult, setBatchResult] = useState(null);
+  const [csvFileName, setCsvFileName] = useState("");
 
   const { showSuccess, showError } = useToast();
+
+  const UTM_PRESETS = [
+    { label: "Google Ads", source: "google", medium: "cpc", campaign: "promo" },
+    { label: "Twitter / X Post", source: "twitter", medium: "social", campaign: "organic" },
+    { label: "Email Newsletter", source: "newsletter", medium: "email", campaign: "weekly" },
+    { label: "Product Hunt", source: "producthunt", medium: "referral", campaign: "launch" },
+  ];
+
+  const applyUtmPreset = (p) => {
+    setUtmSource(p.source);
+    setUtmMedium(p.medium);
+    setUtmCampaign(p.campaign);
+    setShowUtm(true);
+    showSuccess(`Applied "${p.label}" UTM campaign template`);
+  };
+
+  const handleCsvFileUpload = (file) => {
+    if (!file) return;
+    setCsvFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target.result;
+      const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      const urls = [];
+      for (const line of lines) {
+        const parts = line.split(",").map((p) => p.trim().replace(/^["']|["']$/g, ""));
+        const candidate = parts.find((p) => p.startsWith("http://") || p.startsWith("https://"));
+        if (candidate) urls.push(candidate);
+      }
+      if (urls.length > 0) {
+        setBatchRawText(urls.join("\n"));
+        showSuccess(`Imported ${urls.length} URLs from ${file.name}`);
+      } else {
+        showError("No valid http/https URLs found in CSV file");
+      }
+    };
+    reader.readAsText(file);
+  };
 
   // Compute final single destination with UTM params
   const fullTargetUrl = useMemo(() => {
@@ -81,14 +123,28 @@ export default function CreateLinkPage() {
 
     try {
       const expiresAt = computeExpiresAt();
+      const parsedTags = tagsInput
+        .split(",")
+        .map((t) => t.trim().toLowerCase())
+        .filter(Boolean);
+
       const res = await createUrl({
         originalUrl: fullTargetUrl,
         customCode: customSlug.trim() || undefined,
         expiresAt,
+        tags: parsedTags.length > 0 ? parsedTags : undefined,
+        maxClicks: maxClicks ? Number(maxClicks) : undefined,
+        expiredRedirectUrl: expiredRedirectUrl.trim() || undefined,
       });
 
       setResult(res);
-      showSuccess("Branded short link generated successfully!");
+      if (res.duplicateWarning) {
+        showSuccess(
+          `Short link generated! (Notice: ${res.duplicateWarning.message} - /${res.duplicateWarning.shortCode})`
+        );
+      } else {
+        showSuccess("Branded short link generated successfully!");
+      }
     } catch (err) {
       const msg = err.message || "Failed to create short URL";
       setError(msg);
@@ -393,6 +449,56 @@ export default function CreateLinkPage() {
             </p>
           </div>
 
+          {/* Tags & Categories */}
+          <div className="form-group">
+            <label className="form-label" htmlFor="link-tags">
+              Tags &amp; Categories (Optional)
+            </label>
+            <input
+              id="link-tags"
+              type="text"
+              className="form-input"
+              placeholder="e.g. marketing, launch, newsletter"
+              value={tagsInput}
+              onChange={(e) => setTagsInput(e.target.value)}
+            />
+            <p className="form-helper">Separate multiple tags with commas to group and filter your links in the hub.</p>
+          </div>
+
+          {/* Advanced Limits: Max Clicks & Fallback Destination */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "16px" }}>
+            <div className="form-group">
+              <label className="form-label" htmlFor="max-clicks">
+                Max Clicks (Burn-after-N-visits)
+              </label>
+              <input
+                id="max-clicks"
+                type="number"
+                min="1"
+                className="form-input"
+                placeholder="e.g. 50 (Unlimited if empty)"
+                value={maxClicks}
+                onChange={(e) => setMaxClicks(e.target.value)}
+              />
+              <p className="form-helper">Link automatically expires when this click quota is reached.</p>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="fallback-url">
+                Expired Fallback URL (Optional)
+              </label>
+              <input
+                id="fallback-url"
+                type="url"
+                className="form-input"
+                placeholder="https://example.com/campaign-ended"
+                value={expiredRedirectUrl}
+                onChange={(e) => setExpiredRedirectUrl(e.target.value)}
+              />
+              <p className="form-helper">Redirect visitors here after link expires instead of a 410 error.</p>
+            </div>
+          </div>
+
           {/* Expiration Settings */}
           <div className="form-group">
             <label className="form-label">Link Lifecycle &amp; Expiration</label>
@@ -459,6 +565,26 @@ export default function CreateLinkPage() {
                   marginBottom: "20px",
                 }}
               >
+                {/* Reusable UTM Campaign Presets */}
+                <div style={{ marginBottom: "16px" }}>
+                  <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "block", marginBottom: "8px" }}>
+                    Quick Campaign Presets:
+                  </span>
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    {UTM_PRESETS.map((p) => (
+                      <button
+                        key={p.label}
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ fontSize: "0.75rem", padding: "4px 10px" }}
+                        onClick={() => applyUtmPreset(p)}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
                   <div>
                     <label className="form-label" style={{ fontSize: "0.8rem" }}>
@@ -631,6 +757,49 @@ export default function CreateLinkPage() {
             </div>
           ) : (
             <form onSubmit={handleBatchSubmit}>
+              {/* Drag-and-drop CSV file importer */}
+              <div
+                style={{
+                  border: "2px dashed var(--border-muted)",
+                  borderRadius: "var(--radius-md)",
+                  padding: "20px",
+                  textAlign: "center",
+                  background: "var(--bg-surface-raised)",
+                  marginBottom: "20px",
+                  cursor: "pointer",
+                  transition: "border-color 150ms ease",
+                }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const file = e.dataTransfer.files?.[0];
+                  if (file) handleCsvFileUpload(file);
+                }}
+              >
+                <div style={{ fontSize: "1.5rem", marginBottom: "8px" }}>📁</div>
+                <div style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: "0.95rem" }}>
+                  {csvFileName ? `Loaded: ${csvFileName}` : "Drag and drop a .CSV file here"}
+                </div>
+                <div style={{ color: "var(--text-muted)", fontSize: "0.8rem", marginTop: "4px" }}>
+                  Or click to upload spreadsheet with destination URLs
+                </div>
+                <label
+                  className="btn btn-secondary btn-sm"
+                  style={{ display: "inline-flex", marginTop: "12px", cursor: "pointer" }}
+                >
+                  Browse CSV File
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleCsvFileUpload(file);
+                    }}
+                  />
+                </label>
+              </div>
+
               <div className="form-group">
                 <label className="form-label" htmlFor="batch-urls">
                   Destination URLs (One per line, up to 50 URLs)

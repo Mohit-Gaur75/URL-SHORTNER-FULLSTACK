@@ -54,15 +54,15 @@ async function getSummary(actor, id, query) {
   const range = resolveRange(query, "day");
   const match = humanVisits(link, range);
 
-  // Six independent questions, asked at the same time. (MongoDB's $facet could answer them in
-  // one pass; separate queries are simpler to read and to change.)
-  const [clicks, botClicks, devices, browsers, operatingSystems, referrers] = await Promise.all([
+  // Seven independent aggregations
+  const [clicks, botClicks, devices, browsers, operatingSystems, referrers, countries] = await Promise.all([
     ClickEvent.countDocuments(match),
     ClickEvent.countDocuments({ url: link._id, clickedAt: match.clickedAt, device: "bot" }),
     topBy("device", match),
     topBy("browser", match),
     topBy("os", match),
     topBy("referrer", match),
+    topBy("country", match),
   ]);
 
   return {
@@ -75,6 +75,7 @@ async function getSummary(actor, id, query) {
     browsers,
     operatingSystems,
     referrers,
+    countries,
   };
 }
 
@@ -141,7 +142,15 @@ async function listEvents(actor, id, { page, limit, from, to }) {
   const totalPages = Math.ceil(total / limit);
   return {
     link: linkInfo(link),
-    items: items.map((e) => ({ id: String(e._id), clickedAt: iso(e.clickedAt), device: e.device, browser: e.browser, os: e.os, referrer: e.referrer })),
+    items: items.map((e) => ({
+      id: String(e._id),
+      clickedAt: iso(e.clickedAt),
+      device: e.device,
+      browser: e.browser,
+      os: e.os,
+      referrer: e.referrer,
+      country: e.country || "Unknown",
+    })),
     pagination: { page, limit, total, totalPages, hasNext: page < totalPages, hasPrev: page > 1 },
   };
 }

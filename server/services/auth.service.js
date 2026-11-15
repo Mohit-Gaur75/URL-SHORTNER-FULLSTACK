@@ -1,4 +1,6 @@
 const User = require("../models/user.model");
+const Url = require("../models/url.model");
+const linkCache = require("./linkCache.service");
 const password = require("../utils/password");
 const tokens = require("../utils/tokens");
 const sessions = require("./session.service");
@@ -92,6 +94,33 @@ async function changePassword(userId, { currentPassword, newPassword }) {
   return { user: toPublicUser(user), session };
 }
 
+async function deleteAccount(userId, currentPassword) {
+  const user = await User.findById(userId).select("+password");
+  if (!user) throw new AuthenticationError("User not found");
+
+  const matches = await password.verifyPassword(currentPassword, user.password);
+  if (!matches) {
+    throw new AuthenticationError("Password is incorrect", "INVALID_CREDENTIALS");
+  }
+
+  // End all active user sessions and refresh tokens
+  await sessions.endAllSessions(userId);
+
+  // Invalidate any active cache keys for the user's URLs before soft-deleting
+  const userUrls = await Url.find({ user: userId, status: { $ne: "deleted" } }, { shortCode: 1 });
+  for (const url of userUrls) {
+    await linkCache.invalidate(url.shortCode);
+  }
+
+  // Soft-delete user's links
+  await Url.updateMany({ user: userId }, { $set: { status: "deleted" } });
+
+  // Delete user document
+  await User.findByIdAndDelete(userId);
+
+  return true;
+}
+
 module.exports = {
   register,
   login,
@@ -100,6 +129,7 @@ module.exports = {
   logoutEverywhere,
   updateProfile,
   changePassword,
+  deleteAccount,
   authenticateToken,
   toPublicUser,
 };

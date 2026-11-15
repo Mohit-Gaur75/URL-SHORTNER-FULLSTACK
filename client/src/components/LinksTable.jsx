@@ -7,7 +7,11 @@ const dateFormat = new Intl.DateTimeFormat(undefined, {
 });
 
 const displayStatus = (link) =>
-  link.status === "disabled"
+  link.status === "deleted"
+    ? "deleted"
+    : link.isArchived
+    ? "archived"
+    : link.status === "disabled"
     ? "disabled"
     : link.isExpired
     ? "expired"
@@ -52,8 +56,11 @@ export default function LinksTable({
   onToggle,
   onEdit,
   onDelete,
+  onArchive,
+  onRestore,
   onOpenQr,
   onOpenDetails,
+  onSelectTag,
 }) {
   return (
     <div className="table-wrap" aria-busy={dimmed}>
@@ -93,6 +100,30 @@ export default function LinksTable({
                     </a>
                     <CopyButton text={link.shortUrl} />
                   </div>
+                  {link.tags && link.tags.length > 0 && (
+                    <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginTop: "6px" }}>
+                      {link.tags.map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => onSelectTag?.(t)}
+                          title={`Filter by #${t}`}
+                          style={{
+                            fontSize: "0.7rem",
+                            padding: "1px 6px",
+                            background: "var(--bg-surface-raised)",
+                            border: "1px solid var(--border-subtle)",
+                            borderRadius: "var(--radius-sm)",
+                            color: "var(--text-secondary)",
+                            fontFamily: "var(--font-mono)",
+                            cursor: onSelectTag ? "pointer" : "default",
+                          }}
+                        >
+                          #{t}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </td>
 
                 <td className="destination-cell" title={link.originalUrl}>
@@ -122,6 +153,11 @@ export default function LinksTable({
                     </svg>
                     <span>{link.clicks.toLocaleString()}</span>
                   </div>
+                  {link.maxClicks && (
+                    <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", display: "block", marginTop: "3px" }}>
+                      Quota: {link.clicks}/{link.maxClicks}
+                    </span>
+                  )}
                 </td>
 
                 <td>
@@ -212,6 +248,41 @@ export default function LinksTable({
                       </svg>
                       <span>Edit</span>
                     </button>
+
+                    {onArchive && (
+                      <button
+                        type="button"
+                        className="btn-icon"
+                        disabled={busy}
+                        onClick={() => onArchive(link)}
+                        title={link.isArchived ? "Unarchive link" : "Archive link"}
+                        aria-label={`${link.isArchived ? "Unarchive" : "Archive"} ${link.shortCode}`}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="2" y="3" width="20" height="5" rx="1" />
+                          <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
+                          <path d="M10 12h4" />
+                        </svg>
+                        <span>{link.isArchived ? "Unarchive" : "Archive"}</span>
+                      </button>
+                    )}
+
+                    {onRestore && link.status === "deleted" && (
+                      <button
+                        type="button"
+                        className="btn-icon"
+                        disabled={busy}
+                        onClick={() => onRestore(link)}
+                        title="Restore deleted link"
+                        aria-label={`Restore ${link.shortCode}`}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="1 4 1 10 7 10" />
+                          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                        </svg>
+                        <span>Restore</span>
+                      </button>
+                    )}
 
                     <button
                       type="button"

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useLinks } from "../hooks/useLinks";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
-import { deleteUrl, updateUrl } from "../api/urls";
+import { deleteUrl, updateUrl, restoreUrl } from "../api/urls";
 import { useToast } from "../context/ToastContext";
 import { downloadCsv } from "../utils/exportCsv";
 import LinksTable from "../components/LinksTable";
@@ -19,6 +19,7 @@ const STATUS_TABS = [
   ["active", "Active"],
   ["disabled", "Disabled"],
   ["expired", "Expired"],
+  ["archived", "Archived"],
 ];
 
 const SORT_OPTIONS = [
@@ -36,6 +37,7 @@ function readQuery(searchParams) {
     page: Math.max(1, parseInt(searchParams.get("page"), 10) || 1),
     sortId: SORT_OPTIONS.some((o) => o.id === sortId) ? sortId : "newest",
     status: STATUS_TABS.some(([value]) => value === status) ? status : "all",
+    tag: (searchParams.get("tag") ?? "").slice(0, 30),
     search: (searchParams.get("q") ?? "").slice(0, 100),
   };
 }
@@ -56,6 +58,7 @@ export default function LinksPage() {
           if (merged.page > 1) next.set("page", String(merged.page));
           if (merged.sortId !== "newest") next.set("sort", merged.sortId);
           if (merged.status !== "all") next.set("status", merged.status);
+          if (merged.tag) next.set("tag", merged.tag);
           if (merged.search) next.set("q", merged.search);
           return next;
         },
@@ -91,6 +94,7 @@ export default function LinksPage() {
       sort: sort.sort,
       order: sort.order,
       status: query.status,
+      tag: query.tag || undefined,
       search: query.search || undefined,
     };
   }, [query]);
@@ -150,10 +154,43 @@ export default function LinksPage() {
     }
   };
 
+  const handleArchive = async (link) => {
+    setBusyId(link.id);
+    setActionError("");
+    try {
+      const nextArchived = !link.isArchived;
+      await updateUrl(link.id, { isArchived: nextArchived });
+      showSuccess(nextArchived ? "Link archived" : "Link unarchived");
+      reload();
+    } catch (err) {
+      const msg = err.message || "Failed to update archive status";
+      setActionError(msg);
+      showError(msg);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleRestore = async (link) => {
+    setBusyId(link.id);
+    setActionError("");
+    try {
+      await restoreUrl(link.id);
+      showSuccess("Link successfully restored!");
+      reload();
+    } catch (err) {
+      const msg = err.message || "Failed to restore link";
+      setActionError(msg);
+      showError(msg);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const clearFilters = () => {
     pushedSearch.current = "";
     setSearchText("");
-    updateQuery({ search: "", status: "all" });
+    updateQuery({ search: "", status: "all", tag: "" });
   };
 
   const handleExportCsv = () => {
@@ -185,7 +222,7 @@ export default function LinksPage() {
     showSuccess("Links exported to CSV!");
   };
 
-  const filtering = query.status !== "all" || query.search !== "";
+  const filtering = query.status !== "all" || query.search !== "" || query.tag !== "";
   const pagination = data?.pagination;
   const first = pagination ? (pagination.page - 1) * pagination.limit + 1 : 0;
   const last = pagination ? first + data.items.length - 1 : 0;
@@ -273,6 +310,44 @@ export default function LinksPage() {
           ))}
         </div>
 
+        {query.tag && (
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", margin: "10px 0 16px" }}>
+            <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>Filtering by tag:</span>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "3px 8px",
+                background: "rgba(59, 130, 246, 0.15)",
+                color: "#60a5fa",
+                border: "1px solid rgba(59, 130, 246, 0.3)",
+                borderRadius: "var(--radius-sm)",
+                fontSize: "0.8rem",
+                fontFamily: "var(--font-mono)",
+              }}
+            >
+              #{query.tag}
+              <button
+                type="button"
+                onClick={() => updateQuery({ tag: "" })}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "inherit",
+                  cursor: "pointer",
+                  padding: 0,
+                  fontSize: "0.9rem",
+                  lineHeight: 1,
+                }}
+                title="Clear tag filter"
+              >
+                ✕
+              </button>
+            </span>
+          </div>
+        )}
+
         {actionError && (
           <div className="alert-error" role="alert" style={{ marginBottom: "16px" }}>
             <span style={{ flex: 1 }}>{actionError}</span>
@@ -328,8 +403,11 @@ export default function LinksPage() {
               onToggle={toggle}
               onEdit={setEditing}
               onDelete={setDeleting}
+              onArchive={handleArchive}
+              onRestore={handleRestore}
               onOpenQr={setQrModalUrl}
               onOpenDetails={setDetailsLink}
+              onSelectTag={(tag) => updateQuery({ tag })}
             />
             <div className="table-footer">
               <p aria-live="polite">
