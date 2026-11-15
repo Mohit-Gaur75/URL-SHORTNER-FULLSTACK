@@ -6,7 +6,7 @@ const { NotFoundError } = require("../utils/errors");
  * Generates a cryptographically random webhook signing secret.
  */
 function generateWebhookSecret() {
-  return `whsec_${crypto.randomBytes(24).toString("hex")}`;
+  return `hook_sec_${crypto.randomBytes(24).toString("hex")}`;
 }
 
 /**
@@ -40,7 +40,7 @@ async function listWebhooks(userId) {
   return webhooks.map((wh) => ({
     ...wh,
     id: wh._id.toString(),
-    secret: wh.secret ? `whsec_••••${wh.secret.slice(-4)}` : null,
+    secret: wh.secret ? `hook_sec_••••${wh.secret.slice(-4)}` : null,
   }));
 }
 

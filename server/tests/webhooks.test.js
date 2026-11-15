@@ -18,8 +18,8 @@ const { NotFoundError } = require("../utils/errors");
 
 test("Webhook Secret & Signature: generates secure secret and signs HMAC-SHA256", () => {
   const secret = generateWebhookSecret();
-  assert.ok(secret.startsWith("whsec_"));
-  assert.equal(secret.length, 6 + 48); // "whsec_" + 48 hex chars (24 bytes)
+  assert.ok(secret.startsWith("hook_sec_"));
+  assert.equal(secret.length, 9 + 48); // "hook_sec_" (9) + 48 hex chars (24 bytes) = 57
 
   const payload = JSON.stringify({ event: "link.clicked", timestamp: 1700000000 });
   const signature = signPayload(secret, payload);
@@ -84,7 +84,7 @@ test("Webhook Delivery: sends signed POST payload with expected headers", async 
 
   const fakeWebhook = {
     url: "https://consumer.app/webhook",
-    secret: "whsec_testsecret1234567890123456789012",
+    secret: "mock_test_signing_secret_for_unit_tests",
     save: async () => {},
   };
 
@@ -128,7 +128,7 @@ test("Webhook Delivery: handles consumer error status and network failure", asyn
 
   const fakeWebhook = {
     url: "https://consumer.app/webhook",
-    secret: "whsec_test123",
+    secret: "mock_test_signing_secret_for_unit_tests",
     failureCount: 0,
     save: async () => {},
   };
@@ -172,7 +172,7 @@ test("Webhook Service: CRUD and testWebhook execution", async () => {
     _id: fakeWebhookId,
     user: fakeUserId,
     url: "https://example.com/webhook",
-    secret: "whsec_0123456789abcdef0123456789abcdef0123456789abcdef",
+    secret: "hook_sec_mock_crud_signing_secret_for_unit_testing",
     description: "Test Webhook",
     events: ["link.clicked"],
     status: "active",
@@ -200,12 +200,12 @@ test("Webhook Service: CRUD and testWebhook execution", async () => {
       events: ["link.clicked"],
     });
     assert.equal(created.url, "https://example.com/webhook");
-    assert.ok(created.secret.startsWith("whsec_"));
+    assert.ok(created.secret.startsWith("hook_sec_"));
 
     // 2. List
     const list = await listWebhooks(fakeUserId);
     assert.equal(list.length, 1);
-    assert.ok(list[0].secret.startsWith("whsec_••••")); // masked
+    assert.ok(list[0].secret.startsWith("hook_sec_••••")); // masked
 
     // 3. Update
     const updated = await updateWebhook(fakeUserId, fakeWebhookId, {

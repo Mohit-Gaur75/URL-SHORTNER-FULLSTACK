@@ -606,7 +606,7 @@ export default function SettingsPage() {
                         </div>
                       )}
                       <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "2px" }}>
-                        Secret: <code>{wh.secret || "whsec_••••"}</code>
+                        Secret: <code>{wh.secret || "hook_sec_••••"}</code>
                       </div>
                     </td>
                     <td>
