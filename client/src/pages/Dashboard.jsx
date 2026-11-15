@@ -12,6 +12,8 @@ import EditLinkDialog from "../components/EditLinkDialog";
 import ConfirmDialog from "../components/ConfirmDialog";
 import QrCodeModal from "../components/QrCodeModal";
 import LinkDetailsModal from "../components/LinkDetailsModal";
+import BatchActionBar from "../components/BatchActionBar";
+import { downloadCsv } from "../utils/exportCsv";
 import "./dashboard.css";
 
 const PAGE_SIZE = 10;
@@ -112,6 +114,91 @@ export default function Dashboard() {
   const [deleting, setDeleting] = useState(null);
   const [qrModalUrl, setQrModalUrl] = useState(null);
   const [detailsLink, setDetailsLink] = useState(null);
+
+  // Multi-Select Batch Operations
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [batchBusy, setBatchBusy] = useState(false);
+
+  // Clear selection on page/query change
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [query]);
+
+  const handleToggleSelect = (id) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleToggleSelectAll = () => {
+    if (!data?.items) return;
+    if (selectedIds.length === data.items.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(data.items.map((i) => i.id));
+    }
+  };
+
+  const handleBulkArchive = async (archive) => {
+    setBatchBusy(true);
+    try {
+      await Promise.allSettled(selectedIds.map((id) => updateUrl(id, { isArchived: archive })));
+      showSuccess(`Successfully ${archive ? "archived" : "unarchived"} ${selectedIds.length} links`);
+      setSelectedIds([]);
+      reload();
+    } catch (err) {
+      showError(err.message || "Failed to update links");
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
+  const handleBulkStatus = async (status) => {
+    setBatchBusy(true);
+    try {
+      await Promise.allSettled(selectedIds.map((id) => updateUrl(id, { status })));
+      showSuccess(`Successfully set ${selectedIds.length} links to ${status}`);
+      setSelectedIds([]);
+      reload();
+    } catch (err) {
+      showError(err.message || "Failed to update links");
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!window.confirm(`Are you sure you want to permanently delete ${selectedIds.length} links? Codes will remain reserved.`)) return;
+    setBatchBusy(true);
+    try {
+      await Promise.allSettled(selectedIds.map((id) => deleteUrl(id)));
+      showSuccess(`Successfully deleted ${selectedIds.length} links`);
+      setSelectedIds([]);
+      reload();
+    } catch (err) {
+      showError(err.message || "Failed to delete links");
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
+  const handleExportSelected = () => {
+    if (!data?.items) return;
+    const selectedItems = data.items.filter((i) => selectedIds.includes(i.id));
+    const headers = ["ID", "Short Code", "Short URL", "Original URL", "Clicks", "Status", "IsArchived", "Created At"];
+    const rows = selectedItems.map((i) => [
+      i.id,
+      i.shortCode,
+      i.shortUrl,
+      i.originalUrl,
+      i.clicks,
+      i.status,
+      i.isArchived ? "true" : "false",
+      i.createdAt,
+    ]);
+    downloadCsv(`selected-links-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+    showSuccess(`Exported ${selectedItems.length} selected links to CSV`);
+  };
 
   const toggle = async (link) => {
     setBusyId(link.id);
@@ -242,11 +329,25 @@ export default function Dashboard() {
           links={data.items}
           busyId={busyId}
           dimmed={loading}
+          selectedIds={selectedIds}
+          onToggleSelect={handleToggleSelect}
+          onToggleSelectAll={handleToggleSelectAll}
           onToggle={toggle}
           onEdit={setEditing}
           onDelete={setDeleting}
           onOpenQr={setQrModalUrl}
           onOpenDetails={setDetailsLink}
+        />
+        <BatchActionBar
+          selectedCount={selectedIds.length}
+          busy={batchBusy}
+          onClearSelection={() => setSelectedIds([])}
+          onBulkArchive={() => handleBulkArchive(true)}
+          onBulkUnarchive={() => handleBulkArchive(false)}
+          onBulkEnable={() => handleBulkStatus("active")}
+          onBulkDisable={() => handleBulkStatus("disabled")}
+          onBulkDelete={handleBulkDelete}
+          onExportSelected={handleExportSelected}
         />
         <div className="table-footer">
           <p aria-live="polite">

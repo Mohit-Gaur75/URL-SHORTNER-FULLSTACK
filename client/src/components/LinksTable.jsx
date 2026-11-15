@@ -113,6 +113,9 @@ export default function LinksTable({
   links,
   busyId,
   dimmed,
+  selectedIds = [],
+  onToggleSelect,
+  onToggleSelectAll,
   onToggle,
   onEdit,
   onDelete,
@@ -122,12 +125,25 @@ export default function LinksTable({
   onOpenDetails,
   onSelectTag,
 }) {
+  const allSelected = links.length > 0 && selectedIds.length === links.length;
+
   return (
     <div className="table-wrap" aria-busy={dimmed}>
       <table className={dimmed ? "modern-table dimmed" : "modern-table"}>
         <caption className="sr-only">Your short links</caption>
         <thead>
           <tr>
+            {onToggleSelect && (
+              <th scope="col" style={{ width: "36px", textAlign: "center" }}>
+                <input
+                  type="checkbox"
+                  aria-label="Select all links on this page"
+                  checked={allSelected}
+                  onChange={onToggleSelectAll}
+                  style={{ cursor: "pointer", width: "15px", height: "15px", accentColor: "var(--primary)" }}
+                />
+              </th>
+            )}
             <th scope="col">Short Link</th>
             <th scope="col">Destination</th>
             <th scope="col" style={{ textAlign: "right" }}>
@@ -144,9 +160,21 @@ export default function LinksTable({
           {links.map((link) => {
             const status = displayStatus(link);
             const busy = busyId === link.id;
+            const isSelected = selectedIds.includes(link.id);
 
             return (
-              <tr key={link.id}>
+              <tr key={link.id} style={isSelected ? { background: "rgba(59, 130, 246, 0.07)" } : undefined}>
+                {onToggleSelect && (
+                  <td style={{ width: "36px", textAlign: "center" }}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select link ${link.shortCode}`}
+                      checked={isSelected}
+                      onChange={() => onToggleSelect(link.id)}
+                      style={{ cursor: "pointer", width: "15px", height: "15px", accentColor: "var(--primary)" }}
+                    />
+                  </td>
+                )}
                 <td>
                   <div className="short-link-cell">
                     <a
