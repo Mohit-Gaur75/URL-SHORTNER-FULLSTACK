@@ -11,6 +11,7 @@ export const createUrl = async ({
   metaTitle,
   metaDescription,
   metaImage,
+  targetingRules,
 }) => {
   const { data } = await http.post("/urls", {
     originalUrl,
@@ -23,6 +24,7 @@ export const createUrl = async ({
     metaTitle: metaTitle || undefined,
     metaDescription: metaDescription || undefined,
     metaImage: metaImage || undefined,
+    targetingRules: targetingRules && targetingRules.length > 0 ? targetingRules : undefined,
   });
   return data;
 };

@@ -18,6 +18,7 @@ function EditForm({ link, onSave, onCancel }) {
   const initialMetaTitle = link.metaTitle || "";
   const initialMetaDescription = link.metaDescription || "";
   const initialMetaImage = link.metaImage || "";
+  const initialTargetingRules = link.targetingRules || [];
 
   const [originalUrl, setOriginalUrl] = useState(link.originalUrl);
   const [expiry, setExpiry] = useState(initialExpiry);
@@ -31,9 +32,25 @@ function EditForm({ link, onSave, onCancel }) {
   const [metaDescription, setMetaDescription] = useState(initialMetaDescription);
   const [metaImage, setMetaImage] = useState(initialMetaImage);
   const [showMeta, setShowMeta] = useState(Boolean(initialMetaTitle || initialMetaDescription || initialMetaImage));
+  const [targetingRules, setTargetingRules] = useState(initialTargetingRules);
+  const [showTargeting, setShowTargeting] = useState(Boolean(initialTargetingRules.length > 0));
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const handleAddRule = () => {
+    setTargetingRules([...targetingRules, { type: "device", target: "ios", destination: "" }]);
+  };
+
+  const handleUpdateRule = (index, field, val) => {
+    const updated = [...targetingRules];
+    updated[index][field] = val;
+    setTargetingRules(updated);
+  };
+
+  const handleRemoveRule = (index) => {
+    setTargetingRules(targetingRules.filter((_, i) => i !== index));
+  };
 
   const submit = async (event) => {
     event.preventDefault();
@@ -78,6 +95,11 @@ function EditForm({ link, onSave, onCancel }) {
     }
     if (metaImage.trim() !== initialMetaImage) {
       changes.metaImage = metaImage.trim() || null;
+    }
+
+    const validRules = targetingRules.filter((r) => r.destination?.trim());
+    if (JSON.stringify(validRules) !== JSON.stringify(initialTargetingRules)) {
+      changes.targetingRules = validRules;
     }
 
     if (Object.keys(changes).length === 0) return onCancel();
@@ -280,6 +302,120 @@ function EditForm({ link, onSave, onCancel }) {
                 onChange={(e) => setMetaImage(e.target.value)}
               />
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Dynamic Device & Geo-Targeting Rules */}
+      <div className="form-group" style={{ marginBottom: "20px" }}>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => setShowTargeting(!showTargeting)}
+          style={{ display: "flex", alignItems: "center", gap: "8px" }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="2" y1="12" x2="22" y2="12" />
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z" />
+          </svg>
+          <span>{showTargeting ? "Hide Dynamic Targeting Rules" : "Dynamic Device & Geo-Targeting Rules"}</span>
+          {targetingRules.length > 0 && (
+            <span className="badge badge-active" style={{ fontSize: "0.7rem", padding: "1px 6px" }}>
+              {targetingRules.length} {targetingRules.length === 1 ? "rule" : "rules"}
+            </span>
+          )}
+        </button>
+
+        {showTargeting && (
+          <div
+            style={{
+              marginTop: "12px",
+              padding: "16px",
+              background: "var(--surface)",
+              border: "1px solid var(--border-subtle)",
+              borderRadius: "var(--radius-md)",
+            }}
+          >
+            <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginTop: 0, marginBottom: "12px" }}>
+              Dynamically route visitors to tailored destinations based on their device OS or geographic country code.
+            </p>
+
+            {targetingRules.map((rule, idx) => (
+              <div
+                key={idx}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "100px 120px 1fr 36px",
+                  gap: "8px",
+                  alignItems: "center",
+                  marginBottom: "10px",
+                }}
+              >
+                <select
+                  className="form-input"
+                  value={rule.type}
+                  onChange={(e) => handleUpdateRule(idx, "type", e.target.value)}
+                  style={{ padding: "8px", fontSize: "0.85rem" }}
+                >
+                  <option value="device">Device</option>
+                  <option value="country">Country</option>
+                </select>
+
+                {rule.type === "device" ? (
+                  <select
+                    className="form-input"
+                    value={rule.target}
+                    onChange={(e) => handleUpdateRule(idx, "target", e.target.value)}
+                    style={{ padding: "8px", fontSize: "0.85rem" }}
+                  >
+                    <option value="ios">iOS</option>
+                    <option value="android">Android</option>
+                    <option value="mobile">Any Mobile</option>
+                    <option value="desktop">Desktop</option>
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. US, IN"
+                    maxLength={4}
+                    value={rule.target}
+                    onChange={(e) => handleUpdateRule(idx, "target", e.target.value.toUpperCase())}
+                    style={{ padding: "8px", fontSize: "0.85rem", textTransform: "uppercase" }}
+                  />
+                )}
+
+                <input
+                  type="url"
+                  className="form-input"
+                  placeholder="https://apps.apple.com/... or https://in.example.com"
+                  value={rule.destination}
+                  onChange={(e) => handleUpdateRule(idx, "destination", e.target.value)}
+                  required
+                  style={{ padding: "8px", fontSize: "0.85rem" }}
+                />
+
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => handleRemoveRule(idx)}
+                  style={{ padding: "8px", color: "var(--danger)", border: "1px solid var(--border-subtle)" }}
+                  title="Remove rule"
+                >
+                  &times;
+                </button>
+              </div>
+            ))}
+
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={handleAddRule}
+              style={{ marginTop: "4px", fontSize: "0.8rem" }}
+            >
+              + Add Targeting Rule
+            </button>
           </div>
         )}
       </div>

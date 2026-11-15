@@ -4,7 +4,8 @@ const codes = require("../utils/shortCode");
 const escapeRegex = require("../utils/escapeRegex");
 const linkCache = require("./linkCache.service");
 const clickBuffer = require("./clickBuffer.service");
-const { recordClick } = require("./clickRecorder");
+const { recordClick, resolveCountry } = require("./clickRecorder");
+const { parseUserAgent } = require("../utils/userAgent");
 const { hashPassword, verifyPassword } = require("../utils/password");
 const webhookService = require("./webhook.service");
 
@@ -55,6 +56,7 @@ async function createShortUrl({
   metaTitle = null,
   metaDescription = null,
   metaImage = null,
+  targetingRules = [],
   userId = null,
 }) {
   const isCustom = Boolean(customCode);
@@ -78,6 +80,7 @@ async function createShortUrl({
         metaTitle: metaTitle ?? null,
         metaDescription: metaDescription ?? null,
         metaImage: metaImage ?? null,
+        targetingRules: Array.isArray(targetingRules) ? targetingRules : [],
       });
       return { url, created: true };
     } catch (err) {
@@ -87,6 +90,48 @@ async function createShortUrl({
     }
   }
   throw new AppError(500, "CODE_GENERATION_FAILED", "Could not generate a unique code, please retry");
+}
+
+function matchTargetingRule(rules, context) {
+  if (!rules || !Array.isArray(rules) || rules.length === 0 || !context) {
+    return null;
+  }
+
+  const ua = parseUserAgent(context.userAgent);
+  const osLower = (ua.os || "").toLowerCase();
+  const deviceLower = (ua.device || "").toLowerCase();
+  const rawCountry = context.country;
+  const resolvedCountry = (resolveCountry(rawCountry, context.ip) || "").toUpperCase();
+
+  for (const rule of rules) {
+    if (!rule || !rule.destination) continue;
+
+    if (rule.type === "device") {
+      const targetLower = (rule.target || "").toLowerCase();
+      if (targetLower === "ios" && (osLower.includes("ios") || osLower.includes("iphone") || osLower.includes("ipad"))) {
+        return rule.destination;
+      }
+      if (targetLower === "android" && osLower.includes("android")) {
+        return rule.destination;
+      }
+      if (targetLower === "mobile" && (deviceLower === "mobile" || osLower.includes("ios") || osLower.includes("android"))) {
+        return rule.destination;
+      }
+      if (targetLower === "desktop" && (deviceLower === "desktop" || osLower.includes("windows") || osLower.includes("mac") || osLower.includes("linux"))) {
+        return rule.destination;
+      }
+      if (targetLower === "tablet" && deviceLower === "tablet") {
+        return rule.destination;
+      }
+    } else if (rule.type === "country") {
+      const targetCountry = (rule.target || "").toUpperCase();
+      if (targetCountry && (resolvedCountry === targetCountry || (rawCountry && rawCountry.toUpperCase() === targetCountry))) {
+        return rule.destination;
+      }
+    }
+  }
+
+  return null;
 }
 
 // ---------------------------------------------------------------- redirect
@@ -162,12 +207,12 @@ async function resolveFromDatabase(code, { countClick = true, context = null } =
         filter,
         { $inc: { clicks: 1 }, $set: { lastClickedAt: now } },
         {
-          projection: { originalUrl: 1, _id: 1, user: 1, clicks: 1, maxClicks: 1, isPasswordProtected: 1, passwordHash: 1 },
+          projection: { originalUrl: 1, _id: 1, user: 1, clicks: 1, maxClicks: 1, isPasswordProtected: 1, passwordHash: 1, targetingRules: 1 },
           timestamps: false,
           lean: true,
         }
       )
-    : await Url.findOne(filter, { originalUrl: 1, _id: 0, user: 1, clicks: 1, maxClicks: 1, isPasswordProtected: 1, passwordHash: 1 }, { lean: true });
+    : await Url.findOne(filter, { originalUrl: 1, _id: 0, user: 1, clicks: 1, maxClicks: 1, isPasswordProtected: 1, passwordHash: 1, targetingRules: 1 }, { lean: true });
 
   if (link) {
     if (link.isPasswordProtected) {
@@ -178,24 +223,25 @@ async function resolveFromDatabase(code, { countClick = true, context = null } =
         throw new AppError(403, "PASSWORD_REQUIRED", "This link is password-protected");
       }
     }
+    const targetUrl = matchTargetingRule(link.targetingRules, context) || link.originalUrl;
     if (countClick && context) recordClick(link._id, context);
     if (countClick && link.user) {
       webhookService.dispatchWebhookEvent(link.user, "link.clicked", {
         linkId: link._id,
         shortCode: code,
-        originalUrl: link.originalUrl,
+        originalUrl: targetUrl,
         timestamp: now,
       });
       if (link.maxClicks != null && (link.clicks + 1) >= link.maxClicks) {
         webhookService.dispatchWebhookEvent(link.user, "link.quota_reached", {
           linkId: link._id,
           shortCode: code,
-          originalUrl: link.originalUrl,
+          originalUrl: targetUrl,
           maxClicks: link.maxClicks,
         });
       }
     }
-    return link.originalUrl;
+    return targetUrl;
   }
 
   const result = await explainUnavailable(code, now);
@@ -265,6 +311,7 @@ function readLiveLinkOnce(code) {
         metaTitle: 1,
         metaDescription: 1,
         metaImage: 1,
+        targetingRules: 1,
       },
       { lean: true }
     );
@@ -313,13 +360,16 @@ async function resolveShortCode(code, { countClick = true, context = null } = {}
       context.meta.description = link.metaDescription;
       context.meta.image = link.metaImage;
     }
-    if (link.maxClicks == null && !link.isPasswordProtected) {
+    const hasRules = Array.isArray(link.targetingRules) && link.targetingRules.length > 0;
+    const targetUrl = matchTargetingRule(link.targetingRules, context) || link.originalUrl;
+
+    if (link.maxClicks == null && !link.isPasswordProtected && !hasRules) {
       linkCache.set(code, link.originalUrl, link.expiresAt, link._id); // non-blocking cache write
     }
     if (countClick) {
-      countClickInBackground(code, link._id, context, link.user, link.originalUrl, link.clicks, link.maxClicks);
+      countClickInBackground(code, link._id, context, link.user, targetUrl, link.clicks, link.maxClicks);
     }
-    return link.originalUrl;
+    return targetUrl;
   }
 
   // 3. Not live: disabled, deleted, expired, archived, or non-existent (never cached)
@@ -382,6 +432,7 @@ const EDITABLE_FIELDS = [
   "metaTitle",
   "metaDescription",
   "metaImage",
+  "targetingRules",
 ];
 
 async function updateUrlFor(actor, id, changes) {

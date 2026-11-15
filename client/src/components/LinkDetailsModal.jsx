@@ -346,6 +346,67 @@ export default function LinkDetailsModal({
           </div>
         )}
 
+        {/* Dynamic Targeting Rules */}
+        {currentLink.targetingRules && currentLink.targetingRules.length > 0 && (
+          <div>
+            <label style={{ display: "block", fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "6px" }}>
+              Targeted Dynamic Routing Rules ({currentLink.targetingRules.length})
+            </label>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "6px",
+              }}
+            >
+              {currentLink.targetingRules.map((rule, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "8px 12px",
+                    background: "var(--surface)",
+                    border: "1px solid var(--border-subtle)",
+                    borderRadius: "var(--radius-sm)",
+                    fontSize: "0.8rem",
+                    gap: "10px",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", overflow: "hidden" }}>
+                    <span
+                      style={{
+                        padding: "2px 6px",
+                        background: "var(--bg-surface-raised)",
+                        borderRadius: "var(--radius-sm)",
+                        fontFamily: "var(--font-mono)",
+                        fontWeight: 600,
+                        color: rule.type === "device" ? "#38bdf8" : "#a855f7",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {rule.type === "device" ? `📱 ${rule.target}` : `🌐 ${rule.target.toUpperCase()}`}
+                    </span>
+                    <span style={{ color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {rule.destination}
+                    </span>
+                  </div>
+                  <a
+                    href={rule.destination}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-secondary btn-sm"
+                    style={{ padding: "2px 8px", fontSize: "0.7rem", flexShrink: 0 }}
+                  >
+                    Open ↗
+                  </a>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Social Card / OpenGraph Preview */}
         {(currentLink.metaTitle || currentLink.metaDescription || currentLink.metaImage) && (
           <div>

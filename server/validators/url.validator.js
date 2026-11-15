@@ -103,6 +103,17 @@ const metaImage = z.preprocess(
   originalUrl.nullable().optional()
 );
 
+const targetingRuleItem = z.strictObject({
+  type: z.enum(["device", "country"], { error: "Targeting rule type must be 'device' or 'country'" }),
+  target: z.string().trim().min(1, "Target cannot be empty").max(30, "Target cannot exceed 30 characters"),
+  destination: originalUrl,
+});
+
+const targetingRules = z.preprocess(
+  (v) => (v === "" || v === undefined ? undefined : v === null ? [] : v),
+  z.array(targetingRuleItem).max(20, "At most 20 targeting rules are allowed").optional()
+);
+
 const verifyPasswordBody = z.strictObject(
   {
     password: z.string({ error: "Password is required" }).min(1, "Password cannot be empty").max(64),
@@ -122,6 +133,7 @@ const createUrlBody = z.strictObject(
     metaTitle: metaTitle.optional(),
     metaDescription: metaDescription.optional(),
     metaImage: metaImage.optional(),
+    targetingRules: targetingRules.optional(),
   },
   { error: bodyTypeError }
 );
@@ -144,6 +156,7 @@ const updateUrlBody = z
       metaTitle: metaTitle.optional(),
       metaDescription: metaDescription.optional(),
       metaImage: metaImage.optional(),
+      targetingRules: targetingRules.optional(),
     },
     { error: bodyTypeError }
   )

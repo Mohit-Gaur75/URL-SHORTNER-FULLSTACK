@@ -2,6 +2,29 @@ const mongoose = require("mongoose");
 
 const URL_STATUSES = ["active", "disabled", "deleted"];
 
+const targetingRuleSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      enum: ["device", "country"],
+      required: true,
+    },
+    target: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 30,
+    },
+    destination: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 2048,
+    },
+  },
+  { _id: false }
+);
+
 const urlSchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
@@ -90,6 +113,11 @@ const urlSchema = new mongoose.Schema(
       type: String,
       default: null,
       maxlength: 300,
+    },
+
+    targetingRules: {
+      type: [targetingRuleSchema],
+      default: [],
     },
 
     clicks: { type: Number, default: 0, min: 0 },

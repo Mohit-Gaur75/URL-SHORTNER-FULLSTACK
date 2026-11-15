@@ -26,6 +26,7 @@ const toUrlResponse = (url) => {
     healthLatencyMs: url.healthLatencyMs ?? null,
     lastHealthCheckedAt: url.lastHealthCheckedAt ?? null,
     healthError: url.healthError ?? null,
+    targetingRules: url.targetingRules || [],
     clicks: url.clicks,
     lastClickedAt: url.lastClickedAt,
     expiresAt: url.expiresAt,
@@ -38,7 +39,7 @@ const toUrlResponse = (url) => {
 exports.toUrlResponse = toUrlResponse;
 
 exports.createUrl = async (req, res) => {
-  const { originalUrl, customCode, expiresAt, tags, maxClicks, expiredRedirectUrl, password, metaTitle, metaDescription, metaImage } = req.validated.body;
+  const { originalUrl, customCode, expiresAt, tags, maxClicks, expiredRedirectUrl, password, metaTitle, metaDescription, metaImage, targetingRules } = req.validated.body;
 
   const existingDuplicate = req.user
     ? await urlService.findExistingByOriginalUrl({ originalUrl, userId: req.user._id })
@@ -55,6 +56,7 @@ exports.createUrl = async (req, res) => {
     metaTitle,
     metaDescription,
     metaImage,
+    targetingRules,
     userId: req.user?._id ?? null,
   });
 
