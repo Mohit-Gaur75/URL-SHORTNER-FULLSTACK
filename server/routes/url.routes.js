@@ -8,6 +8,7 @@ const {
   deleteUrl,
   restoreUrl,
   verifyPassword,
+  checkHealth,
 } = require("../controllers/url.controller");
 const analytics = require("../controllers/analytics.controller");
 const { analyticsQuery, eventsQuery } = require("../validators/analytics.validator");
@@ -29,6 +30,7 @@ router.get("/", authenticate, manageLinks, validate({ query: listUrlsQuery }), l
 router.get("/:id", authenticate, manageLinks, validate({ params: idParams }), getUrl);
 router.patch("/:id", authenticate, manageLinks, validate({ params: idParams, body: updateUrlBody }), updateUrl);
 router.patch("/:id/restore", authenticate, manageLinks, validate({ params: idParams }), restoreUrl);
+router.post("/:id/health", authenticate, manageLinks, validate({ params: idParams }), checkHealth);
 router.delete("/:id", authenticate, manageLinks, validate({ params: idParams }), deleteUrl);
 
 router.get("/:id/analytics", authenticate, analyticsLimit, validate({ params: idParams, query: eventsQuery }), analytics.listClicks);

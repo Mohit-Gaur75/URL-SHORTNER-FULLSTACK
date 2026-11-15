@@ -65,6 +65,33 @@ const urlSchema = new mongoose.Schema(
       maxlength: 2048,
     },
 
+    healthStatus: {
+      type: String,
+      enum: ["unknown", "healthy", "warning", "broken"],
+      default: "unknown",
+    },
+
+    healthStatusCode: {
+      type: Number,
+      default: null,
+    },
+
+    healthLatencyMs: {
+      type: Number,
+      default: null,
+    },
+
+    lastHealthCheckedAt: {
+      type: Date,
+      default: null,
+    },
+
+    healthError: {
+      type: String,
+      default: null,
+      maxlength: 300,
+    },
+
     clicks: { type: Number, default: 0, min: 0 },
     lastClickedAt: { type: Date, default: null },
 

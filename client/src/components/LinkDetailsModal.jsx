@@ -1,6 +1,8 @@
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import Modal from "./Modal";
 import CopyButton from "./CopyButton";
+import { checkLinkHealth } from "../api/urls";
 
 export default function LinkDetailsModal({
   link,
@@ -11,21 +13,31 @@ export default function LinkDetailsModal({
   onOpenEdit,
   onToggleStatus,
   onOpenDelete,
+  onLinkUpdated,
 }) {
-  if (!link) return null;
+  const [currentLink, setCurrentLink] = useState(link);
+  const [checkingHealth, setCheckingHealth] = useState(false);
+  const [healthError, setHealthError] = useState("");
+
+  useEffect(() => {
+    setCurrentLink(link);
+    setHealthError("");
+  }, [link]);
+
+  if (!currentLink) return null;
 
   const isModalOpen = Boolean(isOpen ?? open);
   const origin = window.location.origin;
-  const shortUrl = link.shortUrl || `${origin}/${link.shortCode}`;
+  const shortUrl = currentLink.shortUrl || `${origin}/${currentLink.shortCode}`;
 
-  const isExpired = Boolean(link.isExpired);
-  const statusLabel = link.status === "deleted"
+  const isExpired = Boolean(currentLink.isExpired);
+  const statusLabel = currentLink.status === "deleted"
     ? "Deleted"
-    : link.isArchived
+    : currentLink.isArchived
     ? "Archived"
     : isExpired
     ? "Expired"
-    : link.status === "disabled"
+    : currentLink.status === "disabled"
     ? "Disabled"
     : "Active";
 
@@ -38,23 +50,37 @@ export default function LinkDetailsModal({
       ? "badge-archived"
       : "badge-expired";
 
-  const formattedCreated = link.createdAt
-    ? new Date(link.createdAt).toLocaleString(undefined, {
+  const formattedCreated = currentLink.createdAt
+    ? new Date(currentLink.createdAt).toLocaleString(undefined, {
         dateStyle: "medium",
         timeStyle: "short",
       })
     : "—";
 
-  const formattedExpiry = link.expiresAt
-    ? new Date(link.expiresAt).toLocaleString(undefined, {
+  const formattedExpiry = currentLink.expiresAt
+    ? new Date(currentLink.expiresAt).toLocaleString(undefined, {
         dateStyle: "medium",
         timeStyle: "short",
       })
     : "Never expires";
 
-  const quotaPercent = link.maxClicks
-    ? Math.min(100, Math.round(((link.clicks || 0) / link.maxClicks) * 100))
+  const quotaPercent = currentLink.maxClicks
+    ? Math.min(100, Math.round(((currentLink.clicks || 0) / currentLink.maxClicks) * 100))
     : null;
+
+  const handleCheckHealth = async () => {
+    setCheckingHealth(true);
+    setHealthError("");
+    try {
+      const updated = await checkLinkHealth(currentLink.id);
+      setCurrentLink(updated);
+      onLinkUpdated?.(updated);
+    } catch (err) {
+      setHealthError(err.response?.data?.error?.message || err.message || "Failed to probe destination link");
+    } finally {
+      setCheckingHealth(false);
+    }
+  };
 
   return (
     <Modal open={isModalOpen} onClose={onClose} title="Link Telemetry & Analytics">
@@ -87,8 +113,8 @@ export default function LinkDetailsModal({
 
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <span className={`badge ${statusBadgeClass}`}>{statusLabel}</span>
-            {link.isArchived && <span className="badge badge-archived">Archived</span>}
-            {link.isPasswordProtected && (
+            {currentLink.isArchived && <span className="badge badge-archived">Archived</span>}
+            {currentLink.isPasswordProtected && (
               <span className="badge" style={{ background: "rgba(59, 130, 246, 0.15)", color: "#60a5fa", border: "1px solid rgba(59, 130, 246, 0.3)" }}>
                 🔒 Passcode Protected
               </span>
@@ -126,13 +152,13 @@ export default function LinkDetailsModal({
         </div>
 
         {/* Tags */}
-        {link.tags && link.tags.length > 0 && (
+        {currentLink.tags && currentLink.tags.length > 0 && (
           <div>
             <span style={{ display: "block", fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "6px" }}>
               Tags
             </span>
             <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-              {link.tags.map((t) => (
+              {currentLink.tags.map((t) => (
                 <span
                   key={t}
                   style={{
@@ -157,14 +183,14 @@ export default function LinkDetailsModal({
           <div style={{ background: "var(--surface)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", padding: "14px" }}>
             <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Total Clicks</div>
             <div style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--text-primary)", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
-              {link.clicks || 0}
+              {currentLink.clicks || 0}
             </div>
           </div>
 
           <div style={{ background: "var(--surface)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", padding: "14px" }}>
             <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Click Quota</div>
-            <div style={{ fontSize: "1rem", fontWeight: 600, color: link.maxClicks ? "#f59e0b" : "var(--text-secondary)", marginTop: "6px" }}>
-              {link.maxClicks ? `${link.clicks || 0} / ${link.maxClicks}` : "Unlimited"}
+            <div style={{ fontSize: "1rem", fontWeight: 600, color: currentLink.maxClicks ? "#f59e0b" : "var(--text-secondary)", marginTop: "6px" }}>
+              {currentLink.maxClicks ? `${currentLink.clicks || 0} / ${currentLink.maxClicks}` : "Unlimited"}
             </div>
             {quotaPercent !== null && (
               <div style={{ height: "4px", background: "var(--border-subtle)", borderRadius: "2px", marginTop: "8px", overflow: "hidden" }}>
@@ -175,8 +201,8 @@ export default function LinkDetailsModal({
 
           <div style={{ background: "var(--surface)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", padding: "14px" }}>
             <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Alias Engine</div>
-            <div style={{ fontSize: "0.95rem", fontWeight: 600, color: link.isCustomAlias ? "#a855f7" : "#60a5fa", marginTop: "8px" }}>
-              {link.isCustomAlias ? "Custom Vanity" : "Base62 Hash"}
+            <div style={{ fontSize: "0.95rem", fontWeight: 600, color: currentLink.isCustomAlias ? "#a855f7" : "#60a5fa", marginTop: "8px" }}>
+              {currentLink.isCustomAlias ? "Custom Vanity" : "Base62 Hash"}
             </div>
           </div>
 
@@ -209,10 +235,10 @@ export default function LinkDetailsModal({
             }}
           >
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {link.originalUrl}
+              {currentLink.originalUrl}
             </span>
             <a
-              href={link.originalUrl}
+              href={currentLink.originalUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-secondary btn-sm"
@@ -223,8 +249,82 @@ export default function LinkDetailsModal({
           </div>
         </div>
 
+        {/* Destination Health & Uptime Card */}
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: "var(--radius-md)",
+            padding: "14px 16px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+            <div>
+              <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-primary)" }}>
+                Destination Health &amp; Availability
+              </div>
+              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                Automated probe to detect broken redirects, timeouts, and latency
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={checkingHealth}
+              onClick={handleCheckHealth}
+              style={{ fontSize: "0.75rem", padding: "4px 10px" }}
+            >
+              {checkingHealth ? "Probing..." : "Check Health Now ⚡"}
+            </button>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: "10px" }}>
+            <div style={{ padding: "8px 10px", background: "var(--bg-surface-raised)", borderRadius: "var(--radius-sm)" }}>
+              <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Status</div>
+              <div style={{
+                fontSize: "0.85rem",
+                fontWeight: 600,
+                marginTop: "2px",
+                color: currentLink.healthStatus === "healthy" ? "#10b981" : currentLink.healthStatus === "broken" ? "#ef4444" : currentLink.healthStatus === "warning" ? "#f59e0b" : "var(--text-secondary)"
+              }}>
+                {currentLink.healthStatus === "healthy" && "🟢 Healthy"}
+                {currentLink.healthStatus === "broken" && "🔴 Broken"}
+                {currentLink.healthStatus === "warning" && "🟠 Warning"}
+                {(!currentLink.healthStatus || currentLink.healthStatus === "unknown") && "⚪ Unchecked"}
+              </div>
+            </div>
+
+            <div style={{ padding: "8px 10px", background: "var(--bg-surface-raised)", borderRadius: "var(--radius-sm)" }}>
+              <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>HTTP Code</div>
+              <div style={{ fontSize: "0.85rem", fontWeight: 600, marginTop: "2px", color: "var(--text-primary)" }}>
+                {currentLink.healthStatusCode ? `HTTP ${currentLink.healthStatusCode}` : "—"}
+              </div>
+            </div>
+
+            <div style={{ padding: "8px 10px", background: "var(--bg-surface-raised)", borderRadius: "var(--radius-sm)" }}>
+              <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Latency</div>
+              <div style={{ fontSize: "0.85rem", fontWeight: 600, marginTop: "2px", color: "var(--text-primary)" }}>
+                {currentLink.healthLatencyMs != null ? `${currentLink.healthLatencyMs} ms` : "—"}
+              </div>
+            </div>
+
+            <div style={{ padding: "8px 10px", background: "var(--bg-surface-raised)", borderRadius: "var(--radius-sm)" }}>
+              <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Last Checked</div>
+              <div style={{ fontSize: "0.75rem", fontWeight: 500, marginTop: "4px", color: "var(--text-secondary)" }}>
+                {currentLink.lastHealthCheckedAt ? new Date(currentLink.lastHealthCheckedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Never"}
+              </div>
+            </div>
+          </div>
+
+          {(currentLink.healthError || healthError) && (
+            <div style={{ marginTop: "10px", fontSize: "0.75rem", color: "#ef4444", background: "rgba(239, 68, 68, 0.08)", padding: "6px 10px", borderRadius: "var(--radius-sm)", border: "1px solid rgba(239, 68, 68, 0.2)" }}>
+              ⚠️ {healthError || currentLink.healthError}
+            </div>
+          )}
+        </div>
+
         {/* Expired Fallback URL if defined */}
-        {link.expiredRedirectUrl && (
+        {currentLink.expiredRedirectUrl && (
           <div>
             <label style={{ display: "block", fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "6px" }}>
               Fallback URL (When Expired / Quota Exceeded)
@@ -241,13 +341,13 @@ export default function LinkDetailsModal({
                 wordBreak: "break-all",
               }}
             >
-              {link.expiredRedirectUrl}
+              {currentLink.expiredRedirectUrl}
             </div>
           </div>
         )}
 
         {/* Social Card / OpenGraph Preview */}
-        {(link.metaTitle || link.metaDescription || link.metaImage) && (
+        {(currentLink.metaTitle || currentLink.metaDescription || currentLink.metaImage) && (
           <div>
             <label style={{ display: "block", fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "6px" }}>
               Social Card Embed Preview (OpenGraph)
@@ -260,9 +360,9 @@ export default function LinkDetailsModal({
                 background: "var(--surface)",
               }}
             >
-              {link.metaImage && (
+              {currentLink.metaImage && (
                 <img
-                  src={link.metaImage}
+                  src={currentLink.metaImage}
                   alt="OpenGraph thumbnail"
                   style={{ width: "100%", height: 140, objectFit: "cover", display: "block" }}
                   onError={(e) => { e.target.style.display = "none"; }}
@@ -270,11 +370,11 @@ export default function LinkDetailsModal({
               )}
               <div style={{ padding: "10px 14px" }}>
                 <div style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--text-primary)", marginBottom: "3px" }}>
-                  {link.metaTitle || link.originalUrl}
+                  {currentLink.metaTitle || currentLink.originalUrl}
                 </div>
-                {link.metaDescription && (
+                {currentLink.metaDescription && (
                   <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", lineHeight: 1.4 }}>
-                    {link.metaDescription}
+                    {currentLink.metaDescription}
                   </div>
                 )}
               </div>
@@ -319,7 +419,7 @@ export default function LinkDetailsModal({
             </span>
           </div>
           <Link
-            to={`/analytics?linkId=${link.id}`}
+            to={`/analytics?linkId=${currentLink.id}`}
             onClick={onClose}
             className="btn btn-primary btn-sm"
             style={{ fontSize: "0.8rem", padding: "5px 12px" }}
@@ -346,7 +446,7 @@ export default function LinkDetailsModal({
             className="btn btn-danger btn-sm"
             onClick={() => {
               onClose();
-              onOpenDelete(link);
+              onOpenDelete(currentLink);
             }}
           >
             Delete Link
@@ -357,18 +457,18 @@ export default function LinkDetailsModal({
               type="button"
               className="btn btn-secondary btn-sm"
               onClick={() => {
-                onToggleStatus(link);
+                onToggleStatus(currentLink);
                 onClose();
               }}
             >
-              {link.status === "disabled" ? "Enable Link" : "Disable Link"}
+              {currentLink.status === "disabled" ? "Enable Link" : "Disable Link"}
             </button>
             <button
               type="button"
               className="btn btn-primary btn-sm"
               onClick={() => {
                 onClose();
-                onOpenEdit(link);
+                onOpenEdit(currentLink);
               }}
             >
               Edit Details

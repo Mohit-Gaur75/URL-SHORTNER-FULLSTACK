@@ -49,6 +49,66 @@ function renderExpiration(link, status) {
   );
 }
 
+function renderHealthIndicator(link) {
+  const status = link.healthStatus || "unknown";
+  if (status === "healthy") {
+    return (
+      <span
+        title={`Destination reachable (HTTP ${link.healthStatusCode || 200}, ${link.healthLatencyMs || 0}ms)`}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "4px",
+          fontSize: "0.7rem",
+          color: "#10b981",
+          flexShrink: 0,
+        }}
+      >
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10b981", display: "inline-block" }} />
+        {link.healthLatencyMs != null ? `${link.healthLatencyMs}ms` : "ok"}
+      </span>
+    );
+  }
+  if (status === "warning") {
+    return (
+      <span
+        title={`High Latency / Warning: ${link.healthError || "Slow response"}`}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "4px",
+          fontSize: "0.7rem",
+          color: "#f59e0b",
+          flexShrink: 0,
+        }}
+      >
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#f59e0b", display: "inline-block" }} />
+        {link.healthLatencyMs ? `${link.healthLatencyMs}ms` : "slow"}
+      </span>
+    );
+  }
+  if (status === "broken") {
+    return (
+      <span
+        title={`Destination Broken: ${link.healthError || "Unreachable"}`}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "4px",
+          fontSize: "0.7rem",
+          color: "#ef4444",
+          fontWeight: 600,
+          flexShrink: 0,
+        }}
+      >
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#ef4444", display: "inline-block" }} />
+        broken
+      </span>
+    );
+  }
+  return null;
+}
+
 export default function LinksTable({
   links,
   busyId,
@@ -146,6 +206,7 @@ export default function LinksTable({
                     >
                       {link.originalUrl}
                     </a>
+                    {renderHealthIndicator(link)}
                   </div>
                 </td>
 

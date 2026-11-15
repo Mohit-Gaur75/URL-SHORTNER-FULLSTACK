@@ -80,3 +80,9 @@ export const verifyLinkPassword = async (code, password) => {
   const { data } = await http.post(`/urls/verify-password/${encodeURIComponent(code)}`, { password });
   return data;
 };
+
+export const checkLinkHealth = async (id) => {
+  const { data } = await http.post(`/urls/${id}/health`);
+  return data;
+};
+

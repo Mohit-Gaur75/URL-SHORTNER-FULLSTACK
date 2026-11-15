@@ -566,6 +566,7 @@ export default function Dashboard() {
         onOpenEdit={(link) => setEditing(link)}
         onToggleStatus={(link) => toggle(link)}
         onOpenDelete={(link) => setDeleting(link)}
+        onLinkUpdated={() => reload()}
       />
     </div>
   );

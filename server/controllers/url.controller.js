@@ -1,5 +1,6 @@
 const env = require("../config/env");
 const urlService = require("../services/url.service");
+const linkHealthService = require("../services/linkHealth.service");
 const { logAudit } = require("../services/audit.service");
 
 const toUrlResponse = (url) => {
@@ -20,6 +21,11 @@ const toUrlResponse = (url) => {
     metaTitle: url.metaTitle ?? null,
     metaDescription: url.metaDescription ?? null,
     metaImage: url.metaImage ?? null,
+    healthStatus: url.healthStatus || "unknown",
+    healthStatusCode: url.healthStatusCode ?? null,
+    healthLatencyMs: url.healthLatencyMs ?? null,
+    lastHealthCheckedAt: url.lastHealthCheckedAt ?? null,
+    healthError: url.healthError ?? null,
     clicks: url.clicks,
     lastClickedAt: url.lastClickedAt,
     expiresAt: url.expiresAt,
@@ -165,6 +171,21 @@ exports.restoreUrl = async (req, res) => {
   res.json(toUrlResponse(url));
 };
 
+exports.checkHealth = async (req, res) => {
+  const url = await linkHealthService.checkLinkHealthFor(req.user, req.validated.params.id);
+  if (req.user) {
+    logAudit({
+      user: req.user,
+      action: "URL_HEALTH_CHECK",
+      resourceType: "url",
+      resourceId: url._id,
+      details: { healthStatus: url.healthStatus, statusCode: url.healthStatusCode, latencyMs: url.healthLatencyMs },
+      req,
+    });
+  }
+  res.json(toUrlResponse(url));
+};
+
 const CRAWLER_REGEX = /facebookexternalhit|twitterbot|linkedinbot|slackbot|whatsapp|telegrambot|discordbot|applebot|bingbot|googlebot/i;
 
 function escapeHtml(str) {
@@ -257,3 +278,9 @@ exports.verifyPassword = async (req, res) => {
   const result = await urlService.verifyLinkPassword(req.params.code, password, { context });
   res.json(result);
 };
+
+exports.checkHealth = async (req, res) => {
+  const link = await linkHealthService.checkLinkHealthFor(req.user, req.params.id);
+  res.json(toUrlResponse(link));
+};
+
