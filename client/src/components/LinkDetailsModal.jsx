@@ -88,6 +88,11 @@ export default function LinkDetailsModal({
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <span className={`badge ${statusBadgeClass}`}>{statusLabel}</span>
             {link.isArchived && <span className="badge badge-archived">Archived</span>}
+            {link.isPasswordProtected && (
+              <span className="badge" style={{ background: "rgba(59, 130, 246, 0.15)", color: "#60a5fa", border: "1px solid rgba(59, 130, 246, 0.3)" }}>
+                🔒 Passcode Protected
+              </span>
+            )}
             <button
               type="button"
               className="action-chip-btn"

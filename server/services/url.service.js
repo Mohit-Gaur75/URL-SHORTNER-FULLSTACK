@@ -5,6 +5,7 @@ const escapeRegex = require("../utils/escapeRegex");
 const linkCache = require("./linkCache.service");
 const clickBuffer = require("./clickBuffer.service");
 const { recordClick } = require("./clickRecorder");
+const { hashPassword, verifyPassword } = require("../utils/password");
 
 const MAX_RANDOM_ATTEMPTS = 5;
 
@@ -49,10 +50,13 @@ async function createShortUrl({
   tags = [],
   maxClicks = null,
   expiredRedirectUrl = null,
+  password = null,
   userId = null,
 }) {
   const isCustom = Boolean(customCode);
   const attempts = isCustom ? 1 : MAX_RANDOM_ATTEMPTS;
+  const passwordHash = password ? await hashPassword(password) : null;
+  const isPasswordProtected = Boolean(passwordHash);
 
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
@@ -65,6 +69,8 @@ async function createShortUrl({
         tags: Array.isArray(tags) ? tags : [],
         maxClicks: maxClicks ?? null,
         expiredRedirectUrl: expiredRedirectUrl ?? null,
+        isPasswordProtected,
+        passwordHash,
       });
       return { url, created: true };
     } catch (err) {
@@ -131,14 +137,22 @@ async function resolveFromDatabase(code, { countClick = true, context = null } =
         filter,
         { $inc: { clicks: 1 }, $set: { lastClickedAt: now } },
         {
-          projection: { originalUrl: 1, _id: 1, clicks: 1, maxClicks: 1 },
+          projection: { originalUrl: 1, _id: 1, clicks: 1, maxClicks: 1, isPasswordProtected: 1, passwordHash: 1 },
           timestamps: false,
           lean: true,
         }
       )
-    : await Url.findOne(filter, { originalUrl: 1, _id: 0, clicks: 1, maxClicks: 1 }, { lean: true });
+    : await Url.findOne(filter, { originalUrl: 1, _id: 0, clicks: 1, maxClicks: 1, isPasswordProtected: 1, passwordHash: 1 }, { lean: true });
 
   if (link) {
+    if (link.isPasswordProtected) {
+      if (context?.password) {
+        const ok = await verifyPassword(context.password, link.passwordHash);
+        if (!ok) throw new AppError(403, "PASSWORD_REQUIRED", "Incorrect password for this link");
+      } else {
+        throw new AppError(403, "PASSWORD_REQUIRED", "This link is password-protected");
+      }
+    }
     if (countClick && context) recordClick(link._id, context);
     return link.originalUrl;
   }
@@ -181,7 +195,7 @@ function readLiveLinkOnce(code) {
   if (!pending) {
     const query = Url.findOne(
       liveLinkFilter(code, new Date()),
-      { originalUrl: 1, expiresAt: 1, _id: 1, maxClicks: 1, clicks: 1 },
+      { originalUrl: 1, expiresAt: 1, _id: 1, maxClicks: 1, clicks: 1, isPasswordProtected: 1, passwordHash: 1 },
       { lean: true }
     );
     pending = Promise.resolve(typeof query?.exec === "function" ? query.exec() : query)
@@ -206,8 +220,8 @@ async function resolveShortCode(code, { countClick = true, context = null } = {}
   // 1. Cache hit: instant response, zero database read
   const cached = await linkCache.get(code);
   if (cached) {
-    // If the cached link has a click cap, fallback to database resolution to check accurately
-    if (cached.maxClicks == null) {
+    // If the cached link has a click cap or is password protected, fallback to database resolution
+    if (cached.maxClicks == null && !cached.isPasswordProtected) {
       if (countClick) countClickInBackground(code, cached.id, context);
       return cached.originalUrl;
     }
@@ -216,7 +230,15 @@ async function resolveShortCode(code, { countClick = true, context = null } = {}
   // 2. Cache miss: read MongoDB (coalesced via single-flight pattern)
   const link = await readLiveLinkOnce(code);
   if (link) {
-    if (link.maxClicks == null) {
+    if (link.isPasswordProtected) {
+      if (context?.password) {
+        const ok = await verifyPassword(context.password, link.passwordHash);
+        if (!ok) throw new AppError(403, "PASSWORD_REQUIRED", "Incorrect password for this link");
+      } else {
+        throw new AppError(403, "PASSWORD_REQUIRED", "This link is password-protected");
+      }
+    }
+    if (link.maxClicks == null && !link.isPasswordProtected) {
       linkCache.set(code, link.originalUrl, link.expiresAt, link._id); // non-blocking cache write
     }
     if (countClick) countClickInBackground(code, link._id, context);
@@ -227,6 +249,31 @@ async function resolveShortCode(code, { countClick = true, context = null } = {}
   const result = await explainUnavailable(code, new Date());
   if (result && result.redirect) return result.redirect;
   throw result;
+}
+
+async function verifyLinkPassword(code, password, { context = null } = {}) {
+  if (!codes.isValidCode(code)) throw new NotFoundError("URL not found", "URL_NOT_FOUND");
+  const now = new Date();
+  const link = await Url.findOne(
+    { shortCode: code, status: { $in: ["active", null] } },
+    { originalUrl: 1, _id: 1, isPasswordProtected: 1, passwordHash: 1, expiresAt: 1, maxClicks: 1, clicks: 1 }
+  ).lean();
+
+  if (!link) {
+    const unavailable = await explainUnavailable(code, now);
+    if (unavailable?.redirect) return { success: true, redirectUrl: unavailable.redirect };
+    throw unavailable;
+  }
+
+  if (link.isPasswordProtected && link.passwordHash) {
+    const isValid = await verifyPassword(password, link.passwordHash);
+    if (!isValid) {
+      throw new AppError(401, "INVALID_PASSWORD", "Incorrect password");
+    }
+  }
+
+  countClickInBackground(code, link._id, context);
+  return { success: true, redirectUrl: link.originalUrl };
 }
 
 // ---------------------------------------------------------------- managing a link
@@ -253,6 +300,16 @@ async function updateUrlFor(actor, id, changes) {
   const $set = {};
   for (const field of EDITABLE_FIELDS) {
     if (field in changes) $set[field] = changes[field];
+  }
+
+  if ("password" in changes) {
+    if (changes.password) {
+      $set.passwordHash = await hashPassword(changes.password);
+      $set.isPasswordProtected = true;
+    } else {
+      $set.passwordHash = null;
+      $set.isPasswordProtected = false;
+    }
   }
 
   const url = await Url.findOneAndUpdate(
@@ -401,6 +458,7 @@ module.exports = {
   createShortUrl,
   bulkCreateShortUrls,
   resolveShortCode,
+  verifyLinkPassword,
   getUrlFor,
   updateUrlFor,
   deleteUrlFor,

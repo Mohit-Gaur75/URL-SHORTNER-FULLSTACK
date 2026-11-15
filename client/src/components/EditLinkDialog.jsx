@@ -14,6 +14,7 @@ function EditForm({ link, onSave, onCancel }) {
   const initialMaxClicks = link.maxClicks != null ? String(link.maxClicks) : "";
   const initialFallback = link.expiredRedirectUrl || "";
   const initialArchived = Boolean(link.isArchived);
+  const initialPasswordProtected = Boolean(link.isPasswordProtected);
 
   const [originalUrl, setOriginalUrl] = useState(link.originalUrl);
   const [expiry, setExpiry] = useState(initialExpiry);
@@ -21,6 +22,8 @@ function EditForm({ link, onSave, onCancel }) {
   const [maxClicks, setMaxClicks] = useState(initialMaxClicks);
   const [expiredRedirectUrl, setExpiredRedirectUrl] = useState(initialFallback);
   const [isArchived, setIsArchived] = useState(initialArchived);
+  const [isPasswordProtected, setIsPasswordProtected] = useState(initialPasswordProtected);
+  const [linkPassword, setLinkPassword] = useState("");
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -49,6 +52,15 @@ function EditForm({ link, onSave, onCancel }) {
     }
     if (isArchived !== initialArchived) {
       changes.isArchived = isArchived;
+    }
+    if (isPasswordProtected !== initialPasswordProtected || (isPasswordProtected && linkPassword.trim())) {
+      if (isPasswordProtected) {
+        if (linkPassword.trim()) {
+          changes.password = linkPassword.trim();
+        }
+      } else {
+        changes.password = null;
+      }
     }
 
     if (Object.keys(changes).length === 0) return onCancel();
@@ -158,6 +170,36 @@ function EditForm({ link, onSave, onCancel }) {
             ? "This link has expired. Set a future date to re-activate it."
             : "Leave empty for permanent links that never expire."}
         </p>
+      </div>
+
+      <div className="form-group" style={{ marginBottom: "16px" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "0.9rem", color: "var(--text-primary)", fontWeight: 500 }}>
+          <input
+            type="checkbox"
+            checked={isPasswordProtected}
+            onChange={(e) => setIsPasswordProtected(e.target.checked)}
+            style={{ width: "16px", height: "16px", accentColor: "var(--primary)" }}
+          />
+          <span>🔒 Password Protect Link</span>
+        </label>
+        {isPasswordProtected && (
+          <div style={{ marginTop: "8px" }}>
+            <input
+              type="password"
+              className="form-input"
+              placeholder={initialPasswordProtected ? "Enter new passcode (or leave blank to keep existing)" : "Set passcode (min 3 chars)"}
+              value={linkPassword}
+              onChange={(e) => setLinkPassword(e.target.value)}
+              minLength={3}
+              maxLength={64}
+            />
+            <p className="form-helper">
+              {initialPasswordProtected
+                ? "Link is currently password-protected. Enter a new password to update it."
+                : "Visitors will be required to enter this password to view destination."}
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="form-group" style={{ marginBottom: "20px" }}>

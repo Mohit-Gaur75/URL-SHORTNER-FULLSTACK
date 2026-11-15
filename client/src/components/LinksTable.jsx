@@ -98,6 +98,11 @@ export default function LinksTable({
                     >
                       {link.shortUrl}
                     </a>
+                    {link.isPasswordProtected && (
+                      <span title="Password Protected" style={{ fontSize: "0.85rem", cursor: "help" }}>
+                        🔒
+                      </span>
+                    )}
                     <CopyButton text={link.shortUrl} />
                   </div>
                   {link.tags && link.tags.length > 0 && (

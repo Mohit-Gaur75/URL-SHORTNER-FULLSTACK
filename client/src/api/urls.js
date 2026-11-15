@@ -7,6 +7,7 @@ export const createUrl = async ({
   tags,
   maxClicks,
   expiredRedirectUrl,
+  password,
 }) => {
   const { data } = await http.post("/urls", {
     originalUrl,
@@ -15,6 +16,7 @@ export const createUrl = async ({
     tags: tags && tags.length > 0 ? tags : undefined,
     maxClicks: maxClicks != null && maxClicks !== "" ? Number(maxClicks) : undefined,
     expiredRedirectUrl: expiredRedirectUrl || undefined,
+    password: password || undefined,
   });
   return data;
 };
@@ -65,5 +67,10 @@ export const getUrlEvents = async (id, params = { page: 1, limit: 10 }) => {
 
 export const getSystemHealth = async () => {
   const { data } = await http.get("/health");
+  return data;
+};
+
+export const verifyLinkPassword = async (code, password) => {
+  const { data } = await http.post(`/urls/verify-password/${encodeURIComponent(code)}`, { password });
   return data;
 };

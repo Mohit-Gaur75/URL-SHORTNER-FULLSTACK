@@ -22,6 +22,8 @@ export default function CreateLinkPage() {
   const [tagsInput, setTagsInput] = useState("");
   const [maxClicks, setMaxClicks] = useState("");
   const [expiredRedirectUrl, setExpiredRedirectUrl] = useState("");
+  const [linkPassword, setLinkPassword] = useState("");
+  const [enablePassword, setEnablePassword] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState(EXPIRATION_PRESETS[0]);
   const [customExpiry, setCustomExpiry] = useState("");
   const [showUtm, setShowUtm] = useState(false);
@@ -135,6 +137,7 @@ export default function CreateLinkPage() {
         tags: parsedTags.length > 0 ? parsedTags : undefined,
         maxClicks: maxClicks ? Number(maxClicks) : undefined,
         expiredRedirectUrl: expiredRedirectUrl.trim() || undefined,
+        password: enablePassword && linkPassword.trim() ? linkPassword.trim() : undefined,
       });
 
       setResult(res);
@@ -239,6 +242,8 @@ export default function CreateLinkPage() {
     setResult(null);
     setBatchResult(null);
     setBatchRawText("");
+    setLinkPassword("");
+    setEnablePassword(false);
     setError("");
   };
 
@@ -497,6 +502,34 @@ export default function CreateLinkPage() {
               />
               <p className="form-helper">Redirect visitors here after link expires instead of a 410 error.</p>
             </div>
+          </div>
+
+          {/* Password Protection */}
+          <div className="form-group" style={{ marginBottom: "20px" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "0.9rem", color: "var(--text-primary)", fontWeight: 500 }}>
+              <input
+                type="checkbox"
+                checked={enablePassword}
+                onChange={(e) => setEnablePassword(e.target.checked)}
+                style={{ width: "16px", height: "16px", accentColor: "var(--primary)" }}
+              />
+              <span>🔒 Password Protect Link</span>
+            </label>
+            {enablePassword && (
+              <div style={{ marginTop: "8px", maxWidth: 400 }}>
+                <input
+                  type="password"
+                  className="form-input"
+                  placeholder="Set passcode for this link (min 3 chars)"
+                  value={linkPassword}
+                  onChange={(e) => setLinkPassword(e.target.value)}
+                  minLength={3}
+                  maxLength={64}
+                  required={enablePassword}
+                />
+                <p className="form-helper">Visitors will be prompted to enter this passcode before being redirected.</p>
+              </div>
+            )}
           </div>
 
           {/* Expiration Settings */}

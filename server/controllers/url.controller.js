@@ -13,6 +13,7 @@ const toUrlResponse = (url) => {
     isCustomAlias: url.isCustomAlias,
     status: url.status,
     isArchived: Boolean(url.isArchived),
+    isPasswordProtected: Boolean(url.isPasswordProtected),
     tags: url.tags || [],
     maxClicks: url.maxClicks ?? null,
     expiredRedirectUrl: url.expiredRedirectUrl ?? null,
@@ -28,7 +29,7 @@ const toUrlResponse = (url) => {
 exports.toUrlResponse = toUrlResponse;
 
 exports.createUrl = async (req, res) => {
-  const { originalUrl, customCode, expiresAt, tags, maxClicks, expiredRedirectUrl } = req.validated.body;
+  const { originalUrl, customCode, expiresAt, tags, maxClicks, expiredRedirectUrl, password } = req.validated.body;
 
   const existingDuplicate = req.user
     ? await urlService.findExistingByOriginalUrl({ originalUrl, userId: req.user._id })
@@ -41,6 +42,7 @@ exports.createUrl = async (req, res) => {
     tags,
     maxClicks,
     expiredRedirectUrl,
+    password,
     userId: req.user?._id ?? null,
   });
 
@@ -166,6 +168,31 @@ exports.redirectUrl = async (req, res) => {
     req.get("x-country") ||
     "Unknown";
   const ip = req.ip || req.get("x-forwarded-for") || req.connection?.remoteAddress || "";
+  const password = req.query.pwd || req.get("x-link-password") || null;
+
+  const context = {
+    userAgent: req.get("user-agent") || "",
+    referrer: req.get("referrer") || req.get("referer") || "",
+    country: countryHeader,
+    ip,
+    password,
+    doNotTrack: req.get("dnt") === "1" || req.get("sec-gpc") === "1",
+  };
+  const destination = await urlService.resolveShortCode(req.params.code, { countClick, context });
+
+  // 302 Found: a TEMPORARY redirect. Browsers don't remember it, so every visit
+  // comes back through us (to be counted, and to notice expiry or edits).
+  res.redirect(302, destination);
+};
+
+exports.verifyPassword = async (req, res) => {
+  const { password } = req.validated.body;
+  const countryHeader =
+    req.get("cf-ipcountry") ||
+    req.get("x-country-code") ||
+    req.get("x-country") ||
+    "Unknown";
+  const ip = req.ip || req.get("x-forwarded-for") || req.connection?.remoteAddress || "";
 
   const context = {
     userAgent: req.get("user-agent") || "",
@@ -174,9 +201,7 @@ exports.redirectUrl = async (req, res) => {
     ip,
     doNotTrack: req.get("dnt") === "1" || req.get("sec-gpc") === "1",
   };
-  const destination = await urlService.resolveShortCode(req.params.code, { countClick, context });
 
-  // 302 Found: a TEMPORARY redirect. Browsers don't remember it, so every visit
-  // comes back through us (to be counted, and to notice expiry or edits).
-  res.redirect(302, destination);
+  const result = await urlService.verifyLinkPassword(req.params.code, password, { context });
+  res.json(result);
 };

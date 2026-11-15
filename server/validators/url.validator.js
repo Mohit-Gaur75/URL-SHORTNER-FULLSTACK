@@ -83,6 +83,18 @@ const expiredRedirectUrl = z.preprocess(
   originalUrl.nullable().optional()
 );
 
+const linkPassword = z.preprocess(
+  (v) => (v === "" || v === undefined ? undefined : v === null ? null : String(v)),
+  z.string().min(3, "Password must be at least 3 characters").max(64, "Password cannot exceed 64 characters").nullable().optional()
+);
+
+const verifyPasswordBody = z.strictObject(
+  {
+    password: z.string({ error: "Password is required" }).min(1, "Password cannot be empty").max(64),
+  },
+  { error: bodyTypeError }
+);
+
 const createUrlBody = z.strictObject(
   {
     originalUrl,
@@ -91,6 +103,7 @@ const createUrlBody = z.strictObject(
     tags: tags.optional(),
     maxClicks: maxClicks.optional(),
     expiredRedirectUrl: expiredRedirectUrl.optional(),
+    password: linkPassword.optional(),
   },
   { error: bodyTypeError }
 );
@@ -109,6 +122,7 @@ const updateUrlBody = z
       tags: tags.optional(),
       maxClicks: maxClicks.optional(),
       expiredRedirectUrl: expiredRedirectUrl.optional(),
+      password: linkPassword.optional(),
     },
     { error: bodyTypeError }
   )
@@ -163,4 +177,4 @@ const bulkCreateUrlBody = z.strictObject(
   { error: bodyTypeError }
 );
 
-module.exports = { createUrlBody, updateUrlBody, listUrlsQuery, bulkCreateUrlBody };
+module.exports = { createUrlBody, updateUrlBody, listUrlsQuery, bulkCreateUrlBody, verifyPasswordBody };

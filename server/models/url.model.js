@@ -34,6 +34,16 @@ const urlSchema = new mongoose.Schema(
       maxlength: 2048,
     },
 
+    isPasswordProtected: {
+      type: Boolean,
+      default: false,
+    },
+
+    passwordHash: {
+      type: String,
+      default: null,
+    },
+
     clicks: { type: Number, default: 0, min: 0 },
     lastClickedAt: { type: Date, default: null },
 

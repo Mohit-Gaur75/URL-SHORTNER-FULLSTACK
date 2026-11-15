@@ -1,15 +1,21 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
+import { verifyLinkPassword } from "../api/urls";
 
 export default function RedirectBridge() {
   const { code } = useParams();
   const [errorInfo, setErrorInfo] = useState(null);
 
+  // Password challenge state
+  const [password, setPassword] = useState("");
+  const [unlocking, setUnlocking] = useState(false);
+  const [unlockError, setUnlockError] = useState("");
+
   useEffect(() => {
     if (!code) return;
     const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-    // Detect if this link has 410 Gone / 404 Not Found
+    // Detect if this link has 410 Gone / 404 Not Found / 403 Password Required
     fetch(`${apiUrl}/${encodeURIComponent(code)}`, {
       method: "GET",
       redirect: "manual", // Prevent browser from hiding redirect errors
@@ -48,9 +54,136 @@ export default function RedirectBridge() {
       });
   }, [code]);
 
+  const handleUnlockSubmit = async (e) => {
+    e.preventDefault();
+    if (!password.trim()) return;
+    setUnlocking(true);
+    setUnlockError("");
+    try {
+      const res = await verifyLinkPassword(code, password.trim());
+      if (res?.redirectUrl) {
+        window.location.replace(res.redirectUrl);
+      }
+    } catch (err) {
+      setUnlockError(err.response?.data?.error?.message || err.message || "Incorrect password. Please try again.");
+      setUnlocking(false);
+    }
+  };
+
   if (errorInfo) {
+    const isPasswordRequired = errorInfo.code === "PASSWORD_REQUIRED";
     const isExpired = errorInfo.status === 410 || errorInfo.code === "LINK_EXPIRED";
     const isDeleted = errorInfo.code === "LINK_DELETED";
+
+    // Password Challenge Card
+    if (isPasswordRequired) {
+      return (
+        <div className="auth-container" style={{ padding: "80px 20px" }}>
+          <div
+            className="auth-card"
+            style={{
+              maxWidth: "480px",
+              textAlign: "center",
+              padding: "40px 32px",
+              border: "1px solid rgba(59, 130, 246, 0.35)",
+              background: "var(--bg-surface)",
+              boxShadow: "var(--shadow-lg)",
+              borderRadius: "var(--radius-lg)",
+            }}
+          >
+            <div
+              style={{
+                width: "60px",
+                height: "60px",
+                borderRadius: "50%",
+                background: "rgba(59, 130, 246, 0.12)",
+                color: "#60a5fa",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 16px auto",
+                fontSize: "1.6rem",
+              }}
+            >
+              🔒
+            </div>
+
+            <span
+              style={{
+                display: "inline-block",
+                padding: "3px 10px",
+                borderRadius: "var(--radius-full)",
+                background: "rgba(59, 130, 246, 0.15)",
+                color: "#60a5fa",
+                fontSize: "0.75rem",
+                fontWeight: 700,
+                letterSpacing: "0.05em",
+                textTransform: "uppercase",
+                marginBottom: "10px",
+              }}
+            >
+              Password Protected Link
+            </span>
+
+            <h1
+              style={{
+                fontSize: "1.5rem",
+                fontWeight: 800,
+                color: "var(--text-primary)",
+                marginBottom: "8px",
+              }}
+            >
+              Enter Passcode
+            </h1>
+
+            <p
+              style={{
+                color: "var(--text-secondary)",
+                fontSize: "0.9rem",
+                lineHeight: 1.5,
+                marginBottom: "20px",
+              }}
+            >
+              The owner of <code style={{ color: "#38bdf8" }}>/{code}</code> requires a password to access this destination.
+            </p>
+
+            <form onSubmit={handleUnlockSubmit} style={{ textAlign: "left" }}>
+              <div className="form-group" style={{ marginBottom: "16px" }}>
+                <label className="form-label" htmlFor="link-password">
+                  Link Password
+                </label>
+                <input
+                  id="link-password"
+                  type="password"
+                  className="form-input"
+                  placeholder="Enter passcode"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoFocus
+                  required
+                  disabled={unlocking}
+                />
+              </div>
+
+              {unlockError && (
+                <div className="alert-error" role="alert" style={{ marginBottom: "16px" }}>
+                  <span>{unlockError}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="btn btn-primary"
+                style={{ width: "100%", justifyContent: "center" }}
+                disabled={unlocking || !password.trim()}
+              >
+                {unlocking ? "Verifying & Unlocking..." : "Unlock Destination ↗"}
+              </button>
+            </form>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="auth-container" style={{ padding: "80px 20px" }}>
