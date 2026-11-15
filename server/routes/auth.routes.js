@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const cookieParser = require("cookie-parser");
 const controller = require("../controllers/auth.controller");
+const apiKeyController = require("../controllers/apiKey.controller");
 const {
   registerBody,
   loginBody,
@@ -8,6 +9,7 @@ const {
   changePasswordBody,
   deleteAccountBody,
 } = require("../validators/auth.validator");
+const { createApiKeyBody, idParams } = require("../validators/apiKey.validator");
 const validate = require("../middleware/validate");
 const authenticate = require("../middleware/authenticate");
 const noStore = require("../middleware/noStore");
@@ -30,5 +32,10 @@ router.patch("/profile", authenticate, validate({ body: updateProfileBody }), co
 router.post("/change-password", authenticate, requireCsrfHeader, validate({ body: changePasswordBody }), controller.changePassword);
 router.delete("/account", authenticate, requireCsrfHeader, validate({ body: deleteAccountBody }), controller.deleteAccount);
 router.get("/audit", authenticate, controller.getAuditLogs);
+
+// Personal Access Tokens / API Keys
+router.get("/api-keys", authenticate, apiKeyController.listApiKeys);
+router.post("/api-keys", authenticate, requireCsrfHeader, validate({ body: createApiKeyBody }), apiKeyController.createApiKey);
+router.delete("/api-keys/:id", authenticate, requireCsrfHeader, validate({ params: idParams }), apiKeyController.revokeApiKey);
 
 module.exports = router;

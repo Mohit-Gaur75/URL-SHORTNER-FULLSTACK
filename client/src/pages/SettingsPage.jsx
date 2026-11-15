@@ -2,7 +2,9 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { updateProfile, changePassword, logoutEverywhere, deleteAccount, fetchAuditLogs } from "../api/auth";
+import { listApiKeys, createApiKey, revokeApiKey } from "../api/apiKeys";
 import Modal from "../components/Modal";
+import CopyButton from "../components/CopyButton";
 
 export default function SettingsPage() {
   const { user, logout, updateUser } = useAuth();
@@ -29,6 +31,16 @@ export default function SettingsPage() {
   const [auditTotalPages, setAuditTotalPages] = useState(1);
   const [loadingAudit, setLoadingAudit] = useState(false);
 
+  // API Keys state
+  const [apiKeys, setApiKeys] = useState([]);
+  const [loadingKeys, setLoadingKeys] = useState(false);
+  const [showKeyModal, setShowKeyModal] = useState(false);
+  const [keyName, setKeyName] = useState("");
+  const [keyExpiry, setKeyExpiry] = useState("");
+  const [creatingKey, setCreatingKey] = useState(false);
+  const [createdKeyResult, setCreatedKeyResult] = useState(null);
+  const [revokingKeyId, setRevokingKeyId] = useState(null);
+
   // Delete Account Modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
@@ -51,8 +63,17 @@ export default function SettingsPage() {
       });
   };
 
+  const loadApiKeys = () => {
+    setLoadingKeys(true);
+    listApiKeys()
+      .then((items) => setApiKeys(items || []))
+      .catch((err) => console.warn("Failed to load API keys:", err.message))
+      .finally(() => setLoadingKeys(false));
+  };
+
   useEffect(() => {
     loadAuditLogs(1);
+    loadApiKeys();
   }, []);
 
   const handleUpdateProfile = async (e) => {
@@ -114,6 +135,45 @@ export default function SettingsPage() {
     }
   };
 
+  const handleCreateApiKey = async (e) => {
+    e.preventDefault();
+    if (!keyName.trim()) return;
+    setCreatingKey(true);
+    try {
+      const res = await createApiKey({
+        name: keyName.trim(),
+        expiresAt: keyExpiry ? new Date(keyExpiry).toISOString() : null,
+      });
+      setCreatedKeyResult(res);
+      setKeyName("");
+      setKeyExpiry("");
+      loadApiKeys();
+      loadAuditLogs(1);
+      showSuccess("API key generated successfully!");
+    } catch (err) {
+      showError(err.message || "Failed to create API key");
+    } finally {
+      setCreatingKey(false);
+    }
+  };
+
+  const handleRevokeKey = async (id, name) => {
+    if (!window.confirm(`Are you sure you want to revoke "${name}"? Any external automations or scripts using this token will immediately fail.`)) {
+      return;
+    }
+    setRevokingKeyId(id);
+    try {
+      await revokeApiKey(id);
+      showSuccess(`API key "${name}" revoked.`);
+      loadApiKeys();
+      loadAuditLogs(1);
+    } catch (err) {
+      showError(err.message || "Failed to revoke API key");
+    } finally {
+      setRevokingKeyId(null);
+    }
+  };
+
   const handleDeleteAccountSubmit = async (e) => {
     e.preventDefault();
     if (!deletePassword) {
@@ -136,7 +196,7 @@ export default function SettingsPage() {
   const handleCopyApiSnippet = () => {
     const snippet = `curl -X POST http://localhost:5000/api/urls \\
   -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer <YOUR_ACCESS_TOKEN>" \\
+  -H "Authorization: Bearer sk_live_<YOUR_API_KEY>" \\
   -d '{"originalUrl": "https://github.com", "customCode": "my-gh"}'`;
     navigator.clipboard.writeText(snippet);
     showSuccess("API example copied to clipboard!");
@@ -148,7 +208,7 @@ export default function SettingsPage() {
         <div className="dashboard-title-group">
           <h1>Account &amp; Security Settings</h1>
           <p className="dashboard-subtitle">
-            Manage your session security policies, profile preferences, audit activity logs, and account lifecycle.
+            Manage your session security policies, API access tokens, audit activity logs, and account lifecycle.
           </p>
         </div>
       </div>
@@ -318,6 +378,117 @@ export default function SettingsPage() {
         </form>
       </div>
 
+      {/* Personal Access Tokens / API Keys Card */}
+      <div className="dashboard-card" style={{ marginBottom: "24px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+          <div>
+            <h2 style={{ fontSize: "1.1rem", fontWeight: 600, margin: 0 }}>Personal Access Tokens (API Keys)</h2>
+            <p style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+              Persistent secret tokens for authenticating scripts, CLI tools, GitHub Actions, and Zapier without session expiration.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => {
+              setCreatedKeyResult(null);
+              setKeyName("");
+              setKeyExpiry("");
+              setShowKeyModal(true);
+            }}
+          >
+            + Generate New Token
+          </button>
+        </div>
+
+        {loadingKeys && apiKeys.length === 0 ? (
+          <div style={{ padding: "16px 0", color: "var(--text-muted)", textAlign: "center" }}>
+            Loading API keys...
+          </div>
+        ) : apiKeys.length > 0 ? (
+          <div className="table-wrap">
+            <table className="modern-table">
+              <thead>
+                <tr>
+                  <th scope="col">Name</th>
+                  <th scope="col">Token Prefix</th>
+                  <th scope="col">Created</th>
+                  <th scope="col">Last Used</th>
+                  <th scope="col" style={{ textAlign: "right" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {apiKeys.map((key) => (
+                  <tr key={key.id}>
+                    <td style={{ fontWeight: 600, color: "var(--text-primary)" }}>{key.name}</td>
+                    <td>
+                      <code style={{ fontSize: "0.85rem", color: "#38bdf8", background: "var(--bg-surface-raised)", padding: "2px 6px", borderRadius: "var(--radius-sm)" }}>
+                        {key.keyPrefix}
+                      </code>
+                    </td>
+                    <td style={{ fontSize: "0.85rem", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+                      {new Date(key.createdAt).toLocaleDateString()}
+                    </td>
+                    <td style={{ fontSize: "0.85rem", color: key.lastUsedAt ? "var(--text-primary)" : "var(--text-muted)", whiteSpace: "nowrap" }}>
+                      {key.lastUsedAt ? new Date(key.lastUsedAt).toLocaleString() : "Never used"}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-sm"
+                        disabled={revokingKeyId === key.id}
+                        onClick={() => handleRevokeKey(key.id, key.name)}
+                        style={{ padding: "3px 10px", fontSize: "0.75rem" }}
+                      >
+                        {revokingKeyId === key.id ? "Revoking..." : "Revoke"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", margin: "8px 0" }}>
+            No personal access tokens generated yet. Click &ldquo;+ Generate New Token&rdquo; to create an API key.
+          </p>
+        )}
+      </div>
+
+      {/* Developer API Reference */}
+      <div className="dashboard-card" style={{ marginBottom: "24px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+          <div>
+            <h2 style={{ fontSize: "1.1rem", fontWeight: 600, margin: 0 }}>Developer API Integration</h2>
+            <p style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+              Programmatically create and manage links using standard HTTP REST requests.
+            </p>
+          </div>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={handleCopyApiSnippet}>
+            Copy cURL
+          </button>
+        </div>
+
+        <div
+          style={{
+            background: "rgba(10, 15, 30, 0.95)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: "var(--radius-md)",
+            padding: "16px",
+            fontSize: "0.85rem",
+            color: "#93c5fd",
+            fontFamily: "var(--font-mono)",
+            overflowX: "auto",
+            lineHeight: 1.5,
+          }}
+        >
+          <div><span style={{ color: "#f472b6" }}>curl</span> -X POST http://localhost:5000/api/urls \</div>
+          <div style={{ paddingLeft: "16px" }}>-H <span style={{ color: "#34d399" }}>"Content-Type: application/json"</span> \</div>
+          <div style={{ paddingLeft: "16px" }}>-H <span style={{ color: "#34d399" }}>"Authorization: Bearer sk_live_&lt;YOUR_API_KEY&gt;"</span> \</div>
+          <div style={{ paddingLeft: "16px" }}>-d <span style={{ color: "#facc15" }}>'&#123;"originalUrl": "https://github.com", "customCode": "my-gh"&#125;'</span></div>
+        </div>
+      </div>
+
       {/* Security Audit Activity Log Card */}
       <div className="dashboard-card" style={{ marginBottom: "24px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
@@ -419,40 +590,6 @@ export default function SettingsPage() {
         )}
       </div>
 
-      {/* Developer API Reference */}
-      <div className="dashboard-card" style={{ marginBottom: "24px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-          <div>
-            <h2 style={{ fontSize: "1.1rem", fontWeight: 600, margin: 0 }}>Developer API Integration</h2>
-            <p style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-              Programmatically create and manage links using standard HTTP REST requests.
-            </p>
-          </div>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={handleCopyApiSnippet}>
-            Copy cURL
-          </button>
-        </div>
-
-        <div
-          style={{
-            background: "rgba(10, 15, 30, 0.95)",
-            border: "1px solid var(--border-subtle)",
-            borderRadius: "var(--radius-md)",
-            padding: "16px",
-            fontSize: "0.85rem",
-            color: "#93c5fd",
-            fontFamily: "var(--font-mono)",
-            overflowX: "auto",
-            lineHeight: 1.5,
-          }}
-        >
-          <div><span style={{ color: "#f472b6" }}>curl</span> -X POST http://localhost:5000/api/urls \</div>
-          <div style={{ paddingLeft: "16px" }}>-H <span style={{ color: "#34d399" }}>"Content-Type: application/json"</span> \</div>
-          <div style={{ paddingLeft: "16px" }}>-H <span style={{ color: "#34d399" }}>"Authorization: Bearer &lt;YOUR_ACCESS_TOKEN&gt;"</span> \</div>
-          <div style={{ paddingLeft: "16px" }}>-d <span style={{ color: "#facc15" }}>'&#123;"originalUrl": "https://github.com", "customCode": "my-gh"&#125;'</span></div>
-        </div>
-      </div>
-
       {/* Session Management Card */}
       <div className="dashboard-card" style={{ marginBottom: "24px" }}>
         <h2 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "8px" }}>
@@ -505,6 +642,105 @@ export default function SettingsPage() {
           Delete My Account Permanently
         </button>
       </div>
+
+      {/* Generate API Key Modal */}
+      <Modal
+        open={showKeyModal}
+        onClose={() => setShowKeyModal(false)}
+        title={createdKeyResult ? "API Key Generated" : "Generate Personal Access Token"}
+      >
+        {createdKeyResult ? (
+          <div>
+            <div className="alert-success" style={{ marginBottom: "16px", background: "rgba(16, 185, 129, 0.12)", border: "1px solid rgba(16, 185, 129, 0.3)", padding: "12px", borderRadius: "var(--radius-sm)" }}>
+              <div style={{ fontWeight: 600, color: "#10b981", marginBottom: "4px" }}>
+                Make sure to copy your API key now!
+              </div>
+              <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+                For security reasons, this token cannot be viewed again. If you lose it, you will need to revoke it and generate a new one.
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Secret API Key</label>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <input
+                  type="text"
+                  readOnly
+                  className="form-input"
+                  value={createdKeyResult.rawKey}
+                  style={{ fontFamily: "var(--font-mono)", fontSize: "0.85rem", color: "#38bdf8" }}
+                />
+                <CopyButton text={createdKeyResult.rawKey} />
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setShowKeyModal(false)}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleCreateApiKey}>
+            <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem", marginBottom: "16px" }}>
+              Give your token a descriptive name so you can identify its purpose later.
+            </p>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="api-key-name">
+                Token Name
+              </label>
+              <input
+                id="api-key-name"
+                type="text"
+                className="form-input"
+                placeholder="e.g. CI/CD Deployment, Zapier, Local CLI"
+                value={keyName}
+                maxLength={60}
+                onChange={(e) => setKeyName(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="api-key-exp">
+                Expiration (Optional)
+              </label>
+              <input
+                id="api-key-exp"
+                type="datetime-local"
+                className="form-input"
+                value={keyExpiry}
+                onChange={(e) => setKeyExpiry(e.target.value)}
+              />
+              <p className="form-helper">Leave blank for a non-expiring permanent token.</p>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowKeyModal(false)}
+                disabled={creatingKey}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={creatingKey || !keyName.trim()}
+              >
+                {creatingKey ? "Generating..." : "Generate Token"}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
 
       {/* Account Deletion Confirmation Modal */}
       <Modal
