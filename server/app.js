@@ -94,6 +94,7 @@ app.use(preventHpp);
 // API Endpoints
 app.use("/api/auth", require("./routes/auth.routes"));
 app.use("/api/urls", require("./routes/url.routes"));
+app.use("/api/webhooks", require("./routes/webhook.routes"));
 app.use("/api/admin", require("./routes/admin.routes"));
 app.use("/", require("./routes/redirect.routes")); // wildcard redirect route is last
 

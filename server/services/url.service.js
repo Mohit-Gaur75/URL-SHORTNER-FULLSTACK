@@ -6,6 +6,7 @@ const linkCache = require("./linkCache.service");
 const clickBuffer = require("./clickBuffer.service");
 const { recordClick } = require("./clickRecorder");
 const { hashPassword, verifyPassword } = require("../utils/password");
+const webhookService = require("./webhook.service");
 
 const MAX_RANDOM_ATTEMPTS = 5;
 
@@ -127,9 +128,27 @@ function whyUnavailable(link, now) {
 async function explainUnavailable(code, now) {
   const existing = await Url.findOne(
     { shortCode: code },
-    { status: 1, expiresAt: 1, clicks: 1, maxClicks: 1, expiredRedirectUrl: 1, _id: 0 },
+    { status: 1, expiresAt: 1, clicks: 1, maxClicks: 1, expiredRedirectUrl: 1, originalUrl: 1, user: 1, _id: 1 },
     { lean: true }
   );
+
+  if (existing && existing.user) {
+    const isExpired =
+      (existing.status === "active" || existing.status == null) &&
+      ((existing.expiresAt && existing.expiresAt <= now) ||
+        (existing.maxClicks != null && existing.clicks >= existing.maxClicks));
+    if (isExpired) {
+      webhookService.dispatchWebhookEvent(existing.user, "link.expired", {
+        linkId: existing._id,
+        shortCode: code,
+        originalUrl: existing.originalUrl,
+        expiresAt: existing.expiresAt,
+        clicks: existing.clicks,
+        maxClicks: existing.maxClicks,
+      });
+    }
+  }
+
   return whyUnavailable(existing, now);
 }
 
@@ -143,12 +162,12 @@ async function resolveFromDatabase(code, { countClick = true, context = null } =
         filter,
         { $inc: { clicks: 1 }, $set: { lastClickedAt: now } },
         {
-          projection: { originalUrl: 1, _id: 1, clicks: 1, maxClicks: 1, isPasswordProtected: 1, passwordHash: 1 },
+          projection: { originalUrl: 1, _id: 1, user: 1, clicks: 1, maxClicks: 1, isPasswordProtected: 1, passwordHash: 1 },
           timestamps: false,
           lean: true,
         }
       )
-    : await Url.findOne(filter, { originalUrl: 1, _id: 0, clicks: 1, maxClicks: 1, isPasswordProtected: 1, passwordHash: 1 }, { lean: true });
+    : await Url.findOne(filter, { originalUrl: 1, _id: 0, user: 1, clicks: 1, maxClicks: 1, isPasswordProtected: 1, passwordHash: 1 }, { lean: true });
 
   if (link) {
     if (link.isPasswordProtected) {
@@ -160,6 +179,22 @@ async function resolveFromDatabase(code, { countClick = true, context = null } =
       }
     }
     if (countClick && context) recordClick(link._id, context);
+    if (countClick && link.user) {
+      webhookService.dispatchWebhookEvent(link.user, "link.clicked", {
+        linkId: link._id,
+        shortCode: code,
+        originalUrl: link.originalUrl,
+        timestamp: now,
+      });
+      if (link.maxClicks != null && (link.clicks + 1) >= link.maxClicks) {
+        webhookService.dispatchWebhookEvent(link.user, "link.quota_reached", {
+          linkId: link._id,
+          shortCode: code,
+          originalUrl: link.originalUrl,
+          maxClicks: link.maxClicks,
+        });
+      }
+    }
     return link.originalUrl;
   }
 
@@ -170,7 +205,7 @@ async function resolveFromDatabase(code, { countClick = true, context = null } =
 
 // Counts a click asynchronously without delaying the visitor's HTTP redirect.
 // If Redis is enabled, buffers to Redis; otherwise falls back directly to MongoDB.
-function countClickInBackground(code, linkId = null, context = null) {
+function countClickInBackground(code, linkId = null, context = null, ownerId = null, originalUrl = null, clicks = 0, maxClicks = null) {
   clickBuffer
     .record(code)
     .then((buffered) => {
@@ -189,6 +224,23 @@ function countClickInBackground(code, linkId = null, context = null) {
   if (linkId && context) {
     recordClick(linkId, context);
   }
+
+  if (ownerId) {
+    webhookService.dispatchWebhookEvent(ownerId, "link.clicked", {
+      linkId,
+      shortCode: code,
+      originalUrl,
+      timestamp: new Date(),
+    });
+    if (maxClicks != null && (clicks + 1) >= maxClicks) {
+      webhookService.dispatchWebhookEvent(ownerId, "link.quota_reached", {
+        linkId,
+        shortCode: code,
+        originalUrl,
+        maxClicks,
+      });
+    }
+  }
 }
 
 // Cache-stampede protection:
@@ -205,6 +257,7 @@ function readLiveLinkOnce(code) {
         originalUrl: 1,
         expiresAt: 1,
         _id: 1,
+        user: 1,
         maxClicks: 1,
         clicks: 1,
         isPasswordProtected: 1,
@@ -263,7 +316,9 @@ async function resolveShortCode(code, { countClick = true, context = null } = {}
     if (link.maxClicks == null && !link.isPasswordProtected) {
       linkCache.set(code, link.originalUrl, link.expiresAt, link._id); // non-blocking cache write
     }
-    if (countClick) countClickInBackground(code, link._id, context);
+    if (countClick) {
+      countClickInBackground(code, link._id, context, link.user, link.originalUrl, link.clicks, link.maxClicks);
+    }
     return link.originalUrl;
   }
 

@@ -3,6 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { updateProfile, changePassword, logoutEverywhere, deleteAccount, fetchAuditLogs } from "../api/auth";
 import { listApiKeys, createApiKey, revokeApiKey } from "../api/apiKeys";
+import { listWebhooks, createWebhook, updateWebhook, deleteWebhook, testWebhook } from "../api/webhooks";
 import Modal from "../components/Modal";
 import CopyButton from "../components/CopyButton";
 
@@ -41,6 +42,18 @@ export default function SettingsPage() {
   const [createdKeyResult, setCreatedKeyResult] = useState(null);
   const [revokingKeyId, setRevokingKeyId] = useState(null);
 
+  // Webhooks state
+  const [webhooks, setWebhooks] = useState([]);
+  const [loadingWebhooks, setLoadingWebhooks] = useState(false);
+  const [showWebhookModal, setShowWebhookModal] = useState(false);
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookDesc, setWebhookDesc] = useState("");
+  const [webhookEvents, setWebhookEvents] = useState(["link.clicked", "link.quota_reached", "link.expired"]);
+  const [creatingWebhook, setCreatingWebhook] = useState(false);
+  const [createdWebhookSecret, setCreatedWebhookSecret] = useState(null);
+  const [testingWebhookId, setTestingWebhookId] = useState(null);
+  const [deletingWebhookId, setDeletingWebhookId] = useState(null);
+
   // Delete Account Modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
@@ -71,10 +84,96 @@ export default function SettingsPage() {
       .finally(() => setLoadingKeys(false));
   };
 
+  const loadWebhooks = () => {
+    setLoadingWebhooks(true);
+    listWebhooks()
+      .then((items) => setWebhooks(items || []))
+      .catch((err) => console.warn("Failed to load webhooks:", err.message))
+      .finally(() => setLoadingWebhooks(false));
+  };
+
   useEffect(() => {
     loadAuditLogs(1);
     loadApiKeys();
+    loadWebhooks();
   }, []);
+
+  const handleToggleEvent = (ev) => {
+    if (webhookEvents.includes(ev)) {
+      if (webhookEvents.length === 1) {
+        showError("At least one event must be selected");
+        return;
+      }
+      setWebhookEvents(webhookEvents.filter((e) => e !== ev));
+    } else {
+      setWebhookEvents([...webhookEvents, ev]);
+    }
+  };
+
+  const handleCreateWebhookSubmit = async (e) => {
+    e.preventDefault();
+    if (!webhookUrl.trim()) return;
+    setCreatingWebhook(true);
+    try {
+      const res = await createWebhook({
+        url: webhookUrl.trim(),
+        description: webhookDesc.trim() || undefined,
+        events: webhookEvents,
+      });
+      setCreatedWebhookSecret(res);
+      showSuccess("Webhook created successfully!");
+      setShowWebhookModal(false);
+      setWebhookUrl("");
+      setWebhookDesc("");
+      loadWebhooks();
+    } catch (err) {
+      showError(err.message || "Failed to create webhook");
+    } finally {
+      setCreatingWebhook(false);
+    }
+  };
+
+  const handleDeleteWebhook = async (id, url) => {
+    if (!window.confirm(`Delete webhook for ${url}?`)) return;
+    setDeletingWebhookId(id);
+    try {
+      await deleteWebhook(id);
+      showSuccess("Webhook deleted successfully");
+      loadWebhooks();
+    } catch (err) {
+      showError(err.message || "Failed to delete webhook");
+    } finally {
+      setDeletingWebhookId(null);
+    }
+  };
+
+  const handleTestWebhook = async (id) => {
+    setTestingWebhookId(id);
+    try {
+      const res = await testWebhook(id);
+      if (res.delivery?.success) {
+        showSuccess(`Test ping successful! HTTP ${res.delivery.statusCode} in ${res.delivery.latencyMs}ms`);
+      } else {
+        showError(`Test ping failed: ${res.delivery?.error || `HTTP ${res.delivery?.statusCode || "No Response"}`}`);
+      }
+      loadWebhooks();
+    } catch (err) {
+      showError(err.message || "Failed to dispatch test ping");
+    } finally {
+      setTestingWebhookId(null);
+    }
+  };
+
+  const handleToggleWebhookStatus = async (id, currentStatus) => {
+    const nextStatus = currentStatus === "active" ? "disabled" : "active";
+    try {
+      await updateWebhook(id, { status: nextStatus });
+      showSuccess(`Webhook ${nextStatus === "active" ? "activated" : "disabled"}`);
+      loadWebhooks();
+    } catch (err) {
+      showError(err.message || "Failed to update webhook status");
+    }
+  };
 
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
@@ -455,6 +554,150 @@ export default function SettingsPage() {
         )}
       </div>
 
+      {/* Outbound Webhooks Card */}
+      <div className="dashboard-card" style={{ marginBottom: "24px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+          <div>
+            <h2 style={{ fontSize: "1.1rem", fontWeight: 600, margin: 0 }}>Outbound Event Webhooks</h2>
+            <p style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+              Receive real-time HTTP POST notifications signed with HMAC-SHA256 when links are clicked, reach quota limits, or expire.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => {
+              setWebhookUrl("");
+              setWebhookDesc("");
+              setWebhookEvents(["link.clicked", "link.quota_reached", "link.expired"]);
+              setShowWebhookModal(true);
+            }}
+          >
+            + Add Webhook Endpoint
+          </button>
+        </div>
+
+        {loadingWebhooks && webhooks.length === 0 ? (
+          <div style={{ padding: "16px 0", color: "var(--text-muted)", textAlign: "center" }}>
+            Loading webhooks...
+          </div>
+        ) : webhooks.length > 0 ? (
+          <div className="table-wrap">
+            <table className="modern-table">
+              <thead>
+                <tr>
+                  <th scope="col">Endpoint URL</th>
+                  <th scope="col">Subscribed Events</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Last Delivery</th>
+                  <th scope="col" style={{ textAlign: "right" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {webhooks.map((wh) => (
+                  <tr key={wh.id}>
+                    <td>
+                      <div style={{ fontWeight: 600, color: "var(--text-primary)", wordBreak: "break-all" }}>
+                        {wh.url}
+                      </div>
+                      {wh.description && (
+                        <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                          {wh.description}
+                        </div>
+                      )}
+                      <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                        Secret: <code>{wh.secret || "whsec_••••"}</code>
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+                        {wh.events?.map((ev) => (
+                          <span
+                            key={ev}
+                            style={{
+                              fontSize: "0.7rem",
+                              padding: "2px 6px",
+                              background: "var(--bg-surface-raised)",
+                              border: "1px solid var(--border-subtle)",
+                              borderRadius: "var(--radius-sm)",
+                              color: "var(--text-secondary)",
+                              fontFamily: "var(--font-mono)",
+                            }}
+                          >
+                            {ev}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleWebhookStatus(wh.id, wh.status)}
+                        className={`badge ${wh.status === "active" ? "badge-active" : "badge-disabled"}`}
+                        style={{ cursor: "pointer", border: "none" }}
+                        title="Click to toggle active/disabled status"
+                      >
+                        {wh.status === "active" ? "Active" : "Disabled"}
+                      </button>
+                    </td>
+                    <td>
+                      {wh.lastDeliveredAt ? (
+                        <div>
+                          <span
+                            style={{
+                              fontSize: "0.75rem",
+                              fontWeight: 600,
+                              color: wh.lastStatusCode >= 200 && wh.lastStatusCode < 300 ? "#10b981" : "#ef4444",
+                            }}
+                          >
+                            {wh.lastStatusCode ? `HTTP ${wh.lastStatusCode}` : "Failed"}
+                          </span>
+                          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", display: "block" }}>
+                            {new Date(wh.lastDeliveredAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                          {wh.lastError && (
+                            <span style={{ fontSize: "0.7rem", color: "#ef4444", display: "block" }} title={wh.lastError}>
+                              ⚠️ {wh.lastError.slice(0, 30)}...
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Never fired</span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        disabled={testingWebhookId === wh.id}
+                        onClick={() => handleTestWebhook(wh.id)}
+                        style={{ padding: "3px 8px", fontSize: "0.75rem", marginRight: "6px" }}
+                        title="Send mock ping payload"
+                      >
+                        {testingWebhookId === wh.id ? "Pinging..." : "Test Ping ⚡"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-sm"
+                        disabled={deletingWebhookId === wh.id}
+                        onClick={() => handleDeleteWebhook(wh.id, wh.url)}
+                        style={{ padding: "3px 8px", fontSize: "0.75rem" }}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", margin: "8px 0" }}>
+            No webhooks configured yet. Register a URL to get notified on clicks, quota exhaustion, and expiry.
+          </p>
+        )}
+      </div>
+
       {/* Developer API Reference */}
       <div className="dashboard-card" style={{ marginBottom: "24px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
@@ -740,6 +983,148 @@ export default function SettingsPage() {
             </div>
           </form>
         )}
+      </Modal>
+
+      {/* Add Webhook Modal */}
+      <Modal
+        open={showWebhookModal}
+        onClose={() => setShowWebhookModal(false)}
+        title="Add Outbound Webhook Endpoint"
+      >
+        <form onSubmit={handleCreateWebhookSubmit}>
+          <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem", marginBottom: "16px" }}>
+            Specify the destination URL that will receive signed HTTP POST JSON payloads when events occur.
+          </p>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="webhook-url">
+              Endpoint Target URL
+            </label>
+            <input
+              id="webhook-url"
+              type="url"
+              className="form-input"
+              placeholder="https://api.yourdomain.com/webhooks/shortlinks"
+              value={webhookUrl}
+              onChange={(e) => setWebhookUrl(e.target.value)}
+              required
+              autoFocus
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="webhook-desc">
+              Description (Optional)
+            </label>
+            <input
+              id="webhook-desc"
+              type="text"
+              className="form-input"
+              placeholder="e.g. Analytics Data Ingest, Slack Alert"
+              value={webhookDesc}
+              maxLength={100}
+              onChange={(e) => setWebhookDesc(e.target.value)}
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" style={{ marginBottom: "8px" }}>
+              Subscribed Events
+            </label>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {[
+                { id: "link.clicked", label: "link.clicked", desc: "Dispatched whenever a visitor is redirected" },
+                { id: "link.quota_reached", label: "link.quota_reached", desc: "Dispatched when click quota cap is reached" },
+                { id: "link.expired", label: "link.expired", desc: "Dispatched when an expired link is requested" },
+              ].map((ev) => (
+                <label
+                  key={ev.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "10px",
+                    padding: "8px 12px",
+                    background: "var(--bg-surface-raised)",
+                    border: "1px solid var(--border-subtle)",
+                    borderRadius: "var(--radius-sm)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={webhookEvents.includes(ev.id)}
+                    onChange={() => handleToggleEvent(ev.id)}
+                    style={{ marginTop: "3px" }}
+                  />
+                  <div>
+                    <code style={{ fontSize: "0.85rem", color: "#38bdf8", fontWeight: 600 }}>{ev.label}</code>
+                    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{ev.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setShowWebhookModal(false)}
+              disabled={creatingWebhook}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={creatingWebhook || !webhookUrl.trim() || webhookEvents.length === 0}
+            >
+              {creatingWebhook ? "Saving..." : "Save Webhook"}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Webhook Secret Created Modal */}
+      <Modal
+        open={Boolean(createdWebhookSecret)}
+        onClose={() => setCreatedWebhookSecret(null)}
+        title="Webhook Created Successfully"
+      >
+        <div>
+          <div className="alert-success" style={{ marginBottom: "16px", background: "rgba(16, 185, 129, 0.12)", border: "1px solid rgba(16, 185, 129, 0.3)", padding: "12px", borderRadius: "var(--radius-sm)" }}>
+            <div style={{ fontWeight: 600, color: "#10b981", marginBottom: "4px" }}>
+              Save Your Webhook Signing Secret!
+            </div>
+            <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+              Every outgoing HTTP payload includes an HMAC-SHA256 signature in the <code>x-shortener-signature</code> header. Use this secret to verify request authenticity.
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Signing Secret</label>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <input
+                type="text"
+                readOnly
+                className="form-input"
+                value={createdWebhookSecret?.secret || ""}
+                style={{ fontFamily: "var(--font-mono)", fontSize: "0.85rem", color: "#38bdf8" }}
+              />
+              <CopyButton text={createdWebhookSecret?.secret || ""} />
+            </div>
+          </div>
+
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setCreatedWebhookSecret(null)}
+            >
+              Done
+            </button>
+          </div>
+        </div>
       </Modal>
 
       {/* Account Deletion Confirmation Modal */}
